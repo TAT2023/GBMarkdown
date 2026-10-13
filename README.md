@@ -99,3 +99,18 @@ cargo build --release -p gbm-core --example benchmark
 2–5 GiB 扩展、8 GiB 内存机器、冷盘首屏、长时间滚动 FPS，以及干净 Windows 11 的安装/卸载与关联回归需要继续在对应环境测量。安装包未代码签名。完整离线包可以离线安装 WebView2，Microsoft Runtime 使用其自身许可证。
 
 源码使用 MIT 许可证；依赖保留各自许可证。GitHub Actions 包含 Windows 格式、lint、核心测试、前端构建及 NSIS 产物流水线。
+
+## 分支与发布
+
+`main` 和 `dev` 保持一致；`dev` 仅作为开发起点，不直接积累开发提交。开始开发时先同步，再从 `dev` 创建独立分支：
+
+```powershell
+git fetch origin
+git switch dev
+git merge --ff-only origin/main
+git switch -c feature/your-feature
+```
+
+开发分支合并到 `main` 后，`Sync Dev` 工作流自动将远程 `dev` 快进到 `main`。同步存在短暂延迟；若 `dev` 意外分叉，工作流报错，需先处理分叉，不强制覆盖提交。工作流需要 GitHub Actions 启用，且分支规则允许工作流推送 `dev`。
+
+发布使用附注标签 `vX.Y.Z`。`v0.1.0` 固定指向首次发布提交 `92e4b7e`；标签不随后续分支更新移动。
