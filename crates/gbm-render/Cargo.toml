@@ -1,0 +1,7 @@
+[package]
+name = "gbm-render"
+version.workspace = true
+edition.workspace = true
+[dependencies]
+gbm-parser = { path = "../gbm-parser" }
+serde.workspace = true

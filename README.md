@@ -1,0 +1,101 @@
+# GBMarkdown
+
+Windows 10/11 x64 本地只读 Markdown 阅读器。Rust Workspace + Tauri 2 + React/TypeScript，文件读取、结构索引和搜索全部在 Rust 层完成。
+
+## 使用
+
+构建产物位于 `release/`：
+
+- `GBMarkdown-Portable-x64/GBMarkdown.exe`：直接运行；可将 Markdown 文件拖入窗口，也可把文件路径作为启动参数。
+- `GBMarkdown-Portable-x64.zip`：便携版。
+- `GBMarkdown-Setup-x64.exe`：当前用户 NSIS 安装包，提供文件关联，无需管理员权限。
+- `GBMarkdown-Setup-x64-Offline.exe`：包含 WebView2 离线安装依赖的安装包。
+
+便携版和普通安装版需要 WebView2 Runtime；普通安装版在运行时缺失时会联网下载。阅读器本身离线工作，不请求远程图片，不上传文档。
+
+首次打开先显示一个有限阅读窗口，目录和结构索引随后在后台建立。底部进度条、目录和百分比输入框可跳转到全文任意位置。索引尚未覆盖的远距离位置先显示文本，完成后恢复结构渲染。
+
+快捷键：`Ctrl+O` 打开，`Ctrl+F` 搜索，`Ctrl+G` 百分比跳转，`Ctrl+Home/End` 文档首尾，搜索框 `Enter/Shift+Enter` 下一个/上一个结果。主题、字号、侧边栏、窗口尺寸、最近 20 个文件及阅读位置会自动保存。
+
+## 开发
+
+要求 Node.js 22.12+、Rust stable MSVC、Visual Studio C++ Build Tools、Windows SDK 和 WebView2。Rust 工具链需在 PATH 中。
+
+```powershell
+npm ci
+npm run desktop
+```
+
+单独预览界面：`npm run dev`，地址 `http://127.0.0.1:1420`。浏览器预览使用 File.slice 和有界文本窗口，默认打开示例文档。生产桌面版使用 Rust 引擎；浏览器预览不代表桌面版的 GB 级性能或完整编码支持。
+
+```powershell
+cargo test --workspace --exclude gbmarkdown
+cargo clippy --workspace --all-targets -- -D warnings
+npm run build
+npm run test:ui
+npm run tauri -- build --bundles nsis
+./scripts/package.ps1
+# 先保留普通安装包，再打包离线变体。
+npm run tauri -- bundle --bundles nsis --config src-tauri/tauri.offline.conf.json
+./scripts/package.ps1 -Offline
+```
+
+UI 测试使用本机 Edge 无头模式。`tests/desktop.mjs` 连接专用于验收的 WebView2 调试端口 9229，验证实际 Tauri IPC、1 GiB 文档、跳转、搜索高亮和主题；正常应用不启用远程调试。
+
+发布目录的 `SHA256SUMS.txt` 提供压缩包和安装包的 SHA256 校验值。
+
+## 引擎设计
+
+| 模块 | 实现 |
+| --- | --- |
+| `gbm-file` | Windows seek_read / Unix read_at；8 MiB 扫描缓冲；UTF-8 和带 BOM 的 UTF-16 LE/BE；64 KiB 行片段上限 |
+| `gbm-index` | 64 字节阅读区段记录，磁盘二分定位；16 字节标题位置记录；磁盘分页读取标题正文；redb 存储全局引用定义 |
+| `gbm-parser` | pulldown-cmark，GFM 表格、任务列表和删除线；原始 HTML 转义；安全链接和本地图片占位；源字节位置映射 |
+| `gbm-render` | 有界 HTML 片段；普通 Markdown、围栏内代码和超大块兼容文本 |
+| `gbm-search` | UTF-8 字面量使用 memmem 流式扫描；Unicode 小写匹配及 UTF-16 保留原始字节偏移；跨缓冲匹配和取消 |
+| `gbm-core` | 单活动文档；线程生命周期、搜索互斥与取消；16 MiB 渲染 LRU；版本校验；图片目录约束和尺寸预算 |
+
+前端不会接收完整源文件或全文 AST。阅读区采用最多 4 个有界区段的分段虚拟窗口，通过源位置锚点回收离屏内容；每次常规请求预算 64 KiB。目录和搜索结果使用 TanStack Virtual。目录每段最多 1,000 个标题，另有全局分页滑块，避免数百万标题产生超过浏览器限制的滚动高度。目录及搜索结果各缓存最多 8 页。
+
+索引缓存以规范路径、文件长度、修改时间和首/中/尾内容指纹作为身份。读文件期间每约 8 MiB 验证源版本；前端每 600 ms 检测变化并提示重新加载。完整索引可复用，未完成或版本过期的索引重新生成。
+
+搜索继续扫描并统计全部匹配，最多保存前 10,000 条定位结果。取消、更换关键词和关闭文档会停止旧任务；新搜索等待旧扫描退出，避免多个大文件扫描争用资源。
+
+图片仅接受文档目录内规范路径下的 PNG/JPEG/WebP/GIF/BMP/AVIF，拒绝 SVG、远程地址和越界路径。单文件不超过 16 MiB，解码尺寸不超过 800 万像素，同时最多 2 个读取请求，全局图片内存预算 64 MiB。离开预加载区域时释放图片。
+
+## 性能验证
+
+2026-10-13，Windows 10 19045、Ryzen 7 5800H、约 14 GiB 系统内存。实际生成并扫描了 **1,073,741,824 字节**混合 Markdown，包含中文、Emoji、表格、代码、列表以及约 588 万个标题。
+
+| 核心指标 | 实测 |
+| --- | --- |
+| 首个渲染窗口 | 9.6 ms |
+| 首窗口源数据 | 32.1 KiB |
+| 完整索引 | 10.8 秒 |
+| 100 次随机跳转 P95 | 6.3 ms |
+| UTF-8 区分大小写全文搜索 | 1.1 秒 |
+| Rust 基准进程峰值工作集 | 19.1 MiB |
+
+以上是暖文件系统缓存条件下的 **核心引擎**数据，首窗口不是完整桌面启动时间，内存不包括 WebView2。原始报告保存在 `benchmarks/results/1GiB-mixed-final.json`，首次未优化测量也保留供比较。100 MiB 连续围栏、巨型表格和单行超长文档分别有独立报告。不得据此宣称所有硬件上的 60 FPS 或完整应用小于 600 MiB。
+
+最新发布构建通过真实 WebView2 的 1 GiB 首屏、50% 跳转、搜索结果定位、目录同步、代码高亮和前后区段切换检查，无页面错误。测试后应用与 WebView2 子进程合计工作集单次采样约 **518 MiB**，包含共享页，不代表峰值或独占内存。详情见 `artifacts/desktop-checks.json` 和 `benchmarks/results/desktop-memory.json`。可使用 `./scripts/measure-desktop-memory.ps1 -ReaderPid <进程ID> -DocumentBytes <文件字节数>` 复测。
+
+复现：
+
+```powershell
+node scripts/generate-fixture.mjs mixed 1024
+cargo build --release -p gbm-core --example benchmark
+./scripts/benchmark.ps1 -Path ./benchmarks/fixtures/mixed-1024MiB.md
+```
+
+生成器支持 `mixed`、`paragraphs`、`headings`、`code`、`table`、`longline`、`unicode`、`references`，大小参数为 MiB，最高 5120。`benchmarks/fixtures` 的大文件不进入版本控制。生成前检查可用磁盘空间。
+
+## 兼容边界
+
+本版本实现常见块的局部渲染及围栏恢复，常见语法通过全量/分页输出对比测试。超长行和超过单次预算的复杂块会保留原文、明确降级；巨型表格当前使用兼容文本，并未实现固定表头。目录标题最长显示 512 个字符。
+
+跨区段全局引用目前识别顶层单行定义；复杂多行定义、嵌套容器、脚注和原始 HTML 的完整跨页语义仍需扩展。CommonMark 官方完整用例尚未全部验收。原始 HTML 故意转义，远程图片故意禁用。
+
+2–5 GiB 扩展、8 GiB 内存机器、冷盘首屏、长时间滚动 FPS，以及干净 Windows 11 的安装/卸载与关联回归需要继续在对应环境测量。安装包未代码签名。完整离线包可以离线安装 WebView2，Microsoft Runtime 使用其自身许可证。
+
+源码使用 MIT 许可证；依赖保留各自许可证。GitHub Actions 包含 Windows 格式、lint、核心测试、前端构建及 NSIS 产物流水线。

@@ -1,0 +1,12 @@
+[package]
+name = "gbm-index"
+version.workspace = true
+edition.workspace = true
+[dependencies]
+gbm-file = { path = "../gbm-file" }
+serde.workspace = true
+serde_json.workspace = true
+redb = "3"
+gbm-parser = { path = "../gbm-parser" }
+[dev-dependencies]
+tempfile.workspace = true

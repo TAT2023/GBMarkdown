@@ -1,0 +1,10 @@
+node_modules/
+dist/
+target/
+src-tauri/gen/
+benchmarks/fixtures/*.md
+benchmarks/results/*.json
+*.log
+artifacts/
+release/
+*.tsbuildinfo

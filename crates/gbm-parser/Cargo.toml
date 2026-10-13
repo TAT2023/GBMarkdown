@@ -1,0 +1,6 @@
+[package]
+name = "gbm-parser"
+version.workspace = true
+edition.workspace = true
+[dependencies]
+pulldown-cmark.workspace = true

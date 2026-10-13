@@ -1,0 +1,10 @@
+[package]
+name = "gbm-search"
+version.workspace = true
+edition.workspace = true
+[dependencies]
+gbm-file = { path = "../gbm-file" }
+serde.workspace = true
+memchr = "2"
+[dev-dependencies]
+tempfile.workspace = true
