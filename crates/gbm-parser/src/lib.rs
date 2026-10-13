@@ -83,7 +83,8 @@ pub fn markdown_with_context(
     let options = Options::ENABLE_TABLES
         | Options::ENABLE_TASKLISTS
         | Options::ENABLE_STRIKETHROUGH
-        | Options::ENABLE_FOOTNOTES;
+        | Options::ENABLE_FOOTNOTES
+        | Options::ENABLE_MATH;
     let callback = |link: BrokenLink| {
         resolve(&normalize_label(&link.reference))
             .map(|(url, title)| (CowStr::from(url), CowStr::from(title)))
@@ -103,6 +104,22 @@ pub fn markdown_with_context(
             Event::Html(format!("<p data-source-offset=\"{}\">", source_offset(range.start)).into())
         }
         Event::End(TagEnd::Paragraph) => Event::Html("</p>\n".into()),
+        Event::InlineMath(tex) => Event::Html(
+            format!(
+                "<span class=\"math-source\" data-math=\"inline\" data-source-offset=\"{}\">{}</span>",
+                source_offset(range.start),
+                escape(&tex)
+            )
+            .into(),
+        ),
+        Event::DisplayMath(tex) => Event::Html(
+            format!(
+                "<span class=\"math-source math-display\" data-math=\"display\" data-source-offset=\"{}\">{}</span>",
+                source_offset(range.start),
+                escape(&tex)
+            )
+            .into(),
+        ),
         Event::Html(s) | Event::InlineHtml(s) => Event::Text(s),
         Event::Start(Tag::Link {
             link_type,
@@ -174,5 +191,27 @@ mod tests {
         });
         assert!(h.contains("href=\"https://example.com\""));
         assert!(h.contains("data-source-offset=\"40\""));
+    }
+    #[test]
+    fn math_preserves_tex_and_excludes_literal_code() {
+        let h = markdown_with_references(
+            "Inline $x^2 < y$ and `$literal$`.\n\n$$\n\\frac{a}{b}\n$$\n\n```tex\n$code$\n```\n\n\\$escaped\\$",
+            100,
+            |_| None,
+        );
+        assert_eq!(h.matches("data-math=").count(), 2);
+        assert!(h.contains("data-math=\"inline\" data-source-offset=\"107\">x^2 &lt; y"));
+        assert!(h.contains("data-math=\"display\""));
+        assert!(h.contains("\\frac{a}{b}"));
+        assert!(h.contains("<code>$literal$</code>"));
+        assert!(h.contains("$code$"));
+        assert!(h.contains("$escaped$"));
+    }
+    #[test]
+    fn math_html_is_escaped_and_offsets_follow_utf16() {
+        let h = markdown_with_context("中文 $<script>alert(1)</script>$", 2, true, |_| None);
+        assert!(!h.contains("<script>"));
+        assert!(h.contains("&lt;script&gt;"));
+        assert!(h.contains("data-math=\"inline\" data-source-offset=\"8\""));
     }
 }

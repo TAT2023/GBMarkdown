@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import DOMPurify from 'dompurify';
-import { marked, Renderer } from 'marked';
+import { Marked, Renderer } from 'marked';
+import { mathPlaceholder } from './math';
 
 export interface DocumentInfo { id:string; path:string; name:string; size:number; encoding:string; bom:number }
 export interface Block { start:number; end:number; html:string; mode:string; line:number }
@@ -19,8 +20,15 @@ let serial=0;
 const defaults:Settings={recent:[],theme:'light',sidebar:true,fontSize:16,width:1280,height:860};
 const encodeHTML=(s:string)=>s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
 const previewRenderer=new Renderer();previewRenderer.html=({text})=>encodeHTML(text);
-const browserHTML=(s:string)=>{
-  const html=DOMPurify.sanitize(marked.parse(s,{async:false,renderer:previewRenderer}) as string,{FORBID_TAGS:['img','script','iframe','style','video','audio'],FORBID_ATTR:['style']});
+let previewMarkdown:Promise<Marked>|null=null;
+const browserHTML=async(s:string)=>{
+  previewMarkdown??=import('marked-katex-extension').then(({default:math})=>{
+    const extension=math({nonStandard:true});
+    for(const item of extension.extensions||[])if('renderer' in item)item.renderer=token=>mathPlaceholder(String(token.text),Boolean(token.displayMode));
+    return new Marked({renderer:previewRenderer},extension);
+  });
+  const parser=await previewMarkdown;
+  const html=DOMPurify.sanitize(parser.parse(s,{async:false}) as string,{ADD_ATTR:['data-math'],FORBID_TAGS:['img','script','iframe','style','video','audio'],FORBID_ATTR:['style']});
   return html;
 };
 async function browserOpen(file:File):Promise<DocumentInfo>{
@@ -62,7 +70,7 @@ export const api={
     let skip=0;while(skip<3&&(bytes[skip]&0xc0)===0x80)skip++;start+=skip;
     const text=new TextDecoder().decode(bytes.subarray(skip));
     const raw=start>0&&file.size>65536;
-    const html=raw?`<pre class="plain-fragment">${encodeHTML(text)}</pre>`:browserHTML(text);
+    const html=raw?`<pre class="plain-fragment">${encodeHTML(text)}</pre>`:await browserHTML(text);
     return {start,end:start+bytes.length-skip,blocks:[{start,end:start+bytes.length-skip,html,mode:raw?'compatibility':'markdown',line:0}],requestVersion:version,warning:raw?'浏览器预览使用文本窗口；完整索引与 Markdown 上下文由桌面版提供。':null};
   },
   async outline(id:string,start:number,limit=200):Promise<Heading[]>{if(native)return invoke('get_outline',{documentId:id,start,limit});return current?.headings.slice(start,start+limit)||[];},

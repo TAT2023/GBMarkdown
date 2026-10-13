@@ -3,13 +3,15 @@ import DOMPurify from 'dompurify';
 import { api, type Block, type DocumentInfo, type RenderWindow } from '../services/document-api';
 import { ArrowUp, LoaderCircle } from 'lucide-react';
 import { highlight } from '../services/highlight';
+import { renderMath } from '../services/math';
 let imageMemory=0;
 function Fragment({block,documentId,query}:{block:Block;documentId:string;query:string}){
   const root=useRef<HTMLDivElement>(null);
-  const safeHTML=useMemo(()=>DOMPurify.sanitize(block.html,{ADD_ATTR:['data-local-image','data-title','data-source-offset'],FORBID_TAGS:['script','iframe','style','object'],FORBID_ATTR:['style']}),[block.html]);
+  const safeHTML=useMemo(()=>DOMPurify.sanitize(block.html,{ADD_ATTR:['data-local-image','data-title','data-source-offset','data-math'],FORBID_TAGS:['script','iframe','style','object'],FORBID_ATTR:['style']}),[block.html]);
   useEffect(()=>{
     const el=root.current;if(!el)return;const controller=new AbortController();
     el.innerHTML=safeHTML;
+    if(query)el.querySelectorAll<HTMLElement>('[data-math]').forEach(node=>{if(node.textContent?.toLowerCase().includes(query.toLowerCase()))node.classList.add('math-search-match');});
     const resources=new Map<HTMLElement,{visible:boolean;loading:boolean;memory:number;alt:string;image:HTMLImageElement|null}>();
     const release=(slot:HTMLElement)=>{const resource=resources.get(slot);if(!resource)return;imageMemory-=resource.memory;resource.memory=0;resource.image?.removeAttribute('src');resource.image=null;slot.textContent=resource.alt;};
     const observer=new IntersectionObserver(entries=>{for(const entry of entries){const slot=entry.target as HTMLElement;const path=slot.dataset.localImage;if(!path)continue;let resource=resources.get(slot);if(!resource){resource={visible:false,loading:false,memory:0,alt:slot.textContent||path,image:null};resources.set(slot,resource);}resource.visible=entry.isIntersecting;
@@ -19,9 +21,9 @@ function Fragment({block,documentId,query}:{block:Block;documentId:string;query:
       void api.image(documentId,relative).then(({url,width,height})=>{const state=resources.get(slot)!;state.loading=false;if(controller.signal.aborted||!state.visible)return;const cost=url.length*2+width*height*4;if(imageMemory+cost>64*1024*1024)throw new Error('Image memory budget reached');imageMemory+=cost;state.memory=cost;const img=new Image();state.image=img;img.alt=state.alt;img.onload=()=>{if(controller.signal.aborted||!state.visible)return;slot.replaceChildren(img);slot.style.minHeight='';};img.onerror=()=>{release(slot);slot.textContent=`无法显示图片：${path}`;};img.src=url;}).catch(()=>{const state=resources.get(slot);if(state)state.loading=false;if(!controller.signal.aborted){release(slot);slot.classList.add('image-missing');slot.textContent=`图片不可用：${path}`;}});
     }},{rootMargin:'400px'});
     el.querySelectorAll('[data-local-image]').forEach(slot=>observer.observe(slot));
-    void highlight(el,controller.signal).catch(()=>{}).then(()=>{
+    void Promise.all([highlight(el,controller.signal).catch(()=>{}),renderMath(el,controller.signal).catch(()=>{})]).then(()=>{
       if(controller.signal.aborted||!query)return;
-      const walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);const nodes:Text[]=[];let n:Node|null;while((n=walker.nextNode())){if(n.parentElement?.closest('script,style'))continue;nodes.push(n as Text);}
+      const walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);const nodes:Text[]=[];let n:Node|null;while((n=walker.nextNode())){if(n.parentElement?.closest('script,style,[data-math]'))continue;nodes.push(n as Text);}
       for(const node of nodes){const text=node.data;const lower=text.toLowerCase();let start=0,pos=lower.indexOf(query.toLowerCase());if(pos<0)continue;const fragment=document.createDocumentFragment();while(pos>=0){fragment.append(text.slice(start,pos));const mark=document.createElement('mark');mark.textContent=text.slice(pos,pos+query.length);fragment.append(mark);start=pos+query.length;pos=lower.indexOf(query.toLowerCase(),start);}fragment.append(text.slice(start));node.replaceWith(fragment);}
     });
     return()=>{controller.abort();observer.disconnect();for(const slot of resources.keys())release(slot);};

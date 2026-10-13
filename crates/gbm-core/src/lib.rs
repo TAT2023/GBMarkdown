@@ -211,11 +211,15 @@ impl Document {
             let mut text = String::new();
             let mut end = self.source.bom;
             let mut cut = false;
+            let mut in_math = false;
             for line in Lines::new(&self.source, self.source.bom) {
                 let c = line?;
                 text.push_str(&c.text);
                 end = c.end;
-                if end - self.source.bom >= PAGE_TARGET && c.text.trim().is_empty() {
+                if c.text.trim() == "$$" {
+                    in_math = !in_math;
+                }
+                if end - self.source.bom >= PAGE_TARGET && c.text.trim().is_empty() && !in_math {
                     break;
                 }
                 if end - self.source.bom >= PAGE_LIMIT {
@@ -223,13 +227,15 @@ impl Document {
                     break;
                 }
             }
-            blocks.push(gbm_render::render(
+            blocks.push(gbm_render::render_encoded(
                 self.source.bom,
                 end,
                 1,
                 &text,
                 if cut { 2 } else { 0 },
                 "",
+                self.source.encoding != gbm_file::Encoding::Utf8,
+                |_| None,
             ));
         } else {
             let mut start = offset.saturating_sub(8192);

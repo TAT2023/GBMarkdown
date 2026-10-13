@@ -18,6 +18,21 @@ jobs:
       - run: cargo test --workspace --exclude gbmarkdown
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: npm run build
+      - name: UI and math regression tests
+        shell: pwsh
+        run: |
+          $gbmServer=Start-Process -FilePath (Get-Command node).Source -ArgumentList 'node_modules/vite/bin/vite.js --host 127.0.0.1' -WindowStyle Hidden -PassThru
+          try {
+            $gbmReady=$false
+            for($gbmAttempt=0;$gbmAttempt -lt 40;$gbmAttempt++){
+              try {Invoke-WebRequest 'http://127.0.0.1:1420' -TimeoutSec 1 | Out-Null; $gbmReady=$true; break} catch {Start-Sleep -Milliseconds 500}
+            }
+            if(!$gbmReady){throw 'Preview server did not start'}
+            npm run test:ui
+            if($LASTEXITCODE -ne 0){throw 'UI regression failed'}
+            npm run test:math
+            if($LASTEXITCODE -ne 0){throw 'Math regression failed'}
+          } finally {Stop-Process -Id $gbmServer.Id -ErrorAction SilentlyContinue}
       - run: npm run tauri -- build --bundles nsis
       - run: ./scripts/package.ps1
       - uses: actions/upload-artifact@v4

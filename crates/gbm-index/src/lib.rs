@@ -84,7 +84,7 @@ impl DiskIndex {
             .ok()
             .and_then(|b| serde_json::from_slice::<Manifest>(&b).ok())
             .filter(|m| {
-                m.version == 7
+                m.version == 8
                     && m.identity == source.identity
                     && directory
                         .join("pages.bin")
@@ -236,6 +236,7 @@ impl DiskIndex {
         let mut previous: Option<u64> = None;
         let (mut page_count, mut heading_count, mut validated) = (0, 0, 0);
         let (mut in_list, mut start_list) = (false, false);
+        let (mut in_math, mut start_math) = (false, false);
         let mut fragment = false;
         for item in Lines::new(source, source.bom) {
             if self.cancel.load(Ordering::Relaxed) {
@@ -247,7 +248,18 @@ impl DiskIndex {
             let indent = text.len() - trimmed.len();
             let mut closed_fence = false;
             let blank = text.trim().is_empty();
-            if fence.is_none() && !blank && !fragment && !chunk.continued {
+            let math_delimiter =
+                fence.is_none() && !fragment && !chunk.continued && indent <= 3 && trimmed == "$$";
+            if math_delimiter {
+                in_math = !in_math;
+            }
+            if !in_math
+                && !math_delimiter
+                && fence.is_none()
+                && !blank
+                && !fragment
+                && !chunk.continued
+            {
                 let unordered = trimmed
                     .as_bytes()
                     .first()
@@ -273,7 +285,7 @@ impl DiskIndex {
                     in_list = false;
                 }
             }
-            if !fragment && !chunk.continued && indent <= 3 {
+            if !in_math && !math_delimiter && !fragment && !chunk.continued && indent <= 3 {
                 let marker = trimmed.as_bytes().first().copied().unwrap_or(0);
                 let run = trimmed.bytes().take_while(|b| *b == marker).count();
                 if let Some((fm, fl, _)) = &fence {
@@ -351,10 +363,13 @@ impl DiskIndex {
                 }
             }
             let length = chunk.end - start;
-            let safe = blank && fence.is_none() && !in_list && !chunk.continued;
+            let safe = blank && fence.is_none() && !in_math && !in_list && !chunk.continued;
             let code_end = closed_fence && start_fence.is_some();
-            if (length >= PAGE_TARGET && safe) || length >= PAGE_LIMIT || code_end {
-                let mode = if code_end {
+            let math_end = math_delimiter && !in_math && start_math;
+            if (length >= PAGE_TARGET && safe) || length >= PAGE_LIMIT || code_end || math_end {
+                let mode = if in_math || start_math {
+                    2
+                } else if code_end {
                     3
                 } else if safe && start_fence.is_none() && !start_list {
                     0
@@ -388,8 +403,11 @@ impl DiskIndex {
                 start_line = line + 1;
                 start_fence = fence.clone();
                 start_list = in_list;
+                start_math = in_math;
             }
             if fence.is_none()
+                && !in_math
+                && !math_delimiter
                 && !blank
                 && indent <= 3
                 && !fragment
@@ -425,7 +443,7 @@ impl DiskIndex {
                     line: start_line,
                     mode: if start_fence.is_some() {
                         1
-                    } else if start_list {
+                    } else if start_list || start_math {
                         2
                     } else {
                         0
@@ -452,7 +470,7 @@ impl DiskIndex {
             s.clone()
         };
         let manifest = Manifest {
-            version: 7,
+            version: 8,
             identity: source.identity.clone(),
             status,
         };
