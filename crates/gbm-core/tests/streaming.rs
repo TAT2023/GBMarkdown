@@ -24,7 +24,7 @@ fn normalize(mut html: String) -> String {
 fn pagination_matches_full_parse_for_common_blocks() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("mixed.md");
-    let chapter="# Heading 中文\n\nA **bold** paragraph and `code`, with $x^2$ math.\n\n$$\n\\frac{a}{b}\n$$\n\n- first\n- second\n  - nested\n\n> quoted text\n\n```rust\nfn main() {}\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n";
+    let chapter="# Heading 中文\n\nA **bold** paragraph and `code`, with $x^2$ math.\n\n$$\n\\frac{a}{b}\n=\na\n\n+ b\n$$\n$$\nc = d\n$$\n\n- first\n- second\n  - nested\n\n> quoted text\n\n```rust\nfn main() {}\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n";
     let text = chapter.repeat(1600);
     std::fs::write(&path, &text).unwrap();
     let engine = Engine::new(dir.path().join("cache")).unwrap();

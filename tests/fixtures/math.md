@@ -22,6 +22,26 @@ $$
 \end{bmatrix}
 $$
 
+Fourier encoding, with an equals sign on its own line:
+
+$$
+\phi(\Delta t_i)
+=
+[
+\sin(2\pi\Delta t_i/P_1),
+\cos(2\pi\Delta t_i/P_1),
+\dots,
+\sin(2\pi\Delta t_i/P_K),
+\cos(2\pi\Delta t_i/P_K),
+\log(1+\Delta t_i)
+]
+$$
+$$
+P_k=2^{k-1}, \quad k=1,\dots,K
+$$
+
+Default $K=16$.
+
 A table also contains math:
 
 | Quantity | Formula |

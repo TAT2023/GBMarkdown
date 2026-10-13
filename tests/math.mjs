@@ -24,7 +24,10 @@ try {
   await page.waitForFunction(()=>document.querySelectorAll('.math-rendered').length>=9&&document.querySelectorAll('.math-fallback').length>=1);
   assert.ok((await page.locator('.math-fallback').allTextContents()).includes('\\unknowncommand{x}'));
   assert.equal(await page.locator('.markdown-body h1').first().textContent(),'Formula Rendering');
-  assert.equal(await page.locator('.math-display.math-rendered').count(),3);
+  assert.equal(await page.locator('.math-display.math-rendered').count(),5);
+  const fourier=page.locator('.math-display.math-rendered').filter({hasText:'\\phi(\\Delta t_i)'});
+  assert.equal(await fourier.count(),1);
+  assert.ok((await fourier.locator('annotation').textContent()).includes('\\phi(\\Delta t_i)\n=\n['));
   assert.equal(await page.locator('.markdown-body code .katex').count(),0);
   assert.ok((await page.locator('.markdown-body code').allTextContents()).some(text=>text.includes('$not_math$')));
   assert.equal(await page.locator('.markdown-body a[href^="javascript:"]').count(),0);
