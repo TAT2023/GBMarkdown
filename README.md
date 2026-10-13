@@ -4,6 +4,8 @@ Windows 10/11 x64 本地只读 Markdown 阅读器。Rust Workspace + Tauri 2 + R
 
 ## 使用
 
+Windows 安装包、离线安装包和便携版可从 [GitHub Releases](https://github.com/TAT2023/GBMarkdown/releases) 下载；0.2.0 新增数学公式渲染，0.1.0 保留首次发布功能。
+
 构建产物位于 `release/`：
 
 - `GBMarkdown-Portable-x64/GBMarkdown.exe`：直接运行；可将 Markdown 文件拖入窗口，也可把文件路径作为启动参数。
@@ -43,6 +45,8 @@ npm run tauri -- build --bundles nsis
 # 先保留普通安装包，再打包离线变体。
 npm run tauri -- bundle --bundles nsis --config src-tauri/tauri.offline.conf.json
 ./scripts/package.ps1 -Offline
+# 发布时可分别保存每个版本的产物。
+./scripts/package.ps1 -Offline -OutputDirectory release/v0.2.0
 ```
 
 UI 测试使用本机 Edge 无头模式。`tests/desktop.mjs` 连接专用于验收的 WebView2 调试端口 9229，验证实际 Tauri IPC、1 GiB 文档、跳转、搜索高亮和主题；正常应用不启用远程调试。

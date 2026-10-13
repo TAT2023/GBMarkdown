@@ -4,6 +4,7 @@ import { api, native, type DocumentInfo, type IndexStatus, type Settings } from 
 import Outline from '../components/Outline';
 import MarkdownView from '../components/MarkdownView';
 import SearchPanel from '../components/SearchPanel';
+import { version } from '../../package.json';
 
 const defaultSettings:Settings={recent:[],theme:'light',sidebar:true,fontSize:16,width:1280,height:860};
 const formatBytes=(bytes:number)=>bytes>=1024**3?`${(bytes/1024**3).toFixed(2)} GiB`:bytes>=1024**2?`${(bytes/1024**2).toFixed(1)} MiB`:bytes>=1024?`${(bytes/1024).toFixed(1)} KB`:`${bytes} B`;
@@ -65,7 +66,7 @@ export default function App(){
     <div className="workspace">
       {settings.sidebar&&<aside className="sidebar"><div className="sidebar-tabs"><button className={tab==='outline'?'active':''} onClick={()=>setTab('outline')}><ListTree size={15}/>文档大纲</button><button className={tab==='recent'?'active':''} onClick={()=>setTab('recent')} title="最近文件"><History size={16}/></button></div>
         {tab==='outline'?<><div className="outline-caption"><span>{doc?'目录':'工作区'}</span><span>{status?.headings?`${status.headings.toLocaleString()} 个标题`:''}</span></div>{doc?<Outline id={doc.id} count={status?.headings||0} offset={offset} currentIndex={outlinePosition} onJump={jump}/>:<div className="sidebar-empty"><ListTree size={25}/><span>打开文档后显示大纲</span></div>}</>:<div className="recent-list"><div className="outline-caption"><span>最近打开</span><span>{settings.recent.length}</span></div>{settings.recent.length?settings.recent.map(r=><button key={r.path} className="recent-item" title={r.path} onClick={()=>void openPath(r.path)}><FileText size={17}/><span><strong>{r.name}</strong><small>{formatBytes(r.size)} · {(r.offset/Math.max(1,r.size)*100).toFixed(1)}%</small></span></button>):<div className="sidebar-empty">暂无最近文件</div>}</div>}
-        <div className="sidebar-footer"><span className="status-dot"/>本地 · 离线阅读<span className="version">v0.1.0</span></div>
+        <div className="sidebar-footer"><span className="status-dot"/>本地 · 离线阅读<span className="version">v{version}</span></div>
       </aside>}
       <main className="reader-main">
         {doc&&<div className="document-bar"><div><FileText size={15}/><span>{doc.name}</span><span className="size-tag">{formatBytes(doc.size)}</span></div><button className="progress-button" title="跳转到阅读百分比" onClick={()=>{setJumpValue(progress.toFixed(1));setJumpOpen(true);}}>{progress.toFixed(1)}%<ChevronDown size={13}/></button></div>}
