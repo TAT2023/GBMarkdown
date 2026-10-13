@@ -109,7 +109,7 @@ cargo build --release -p gbm-core --example benchmark
 
 ## 分支与发布
 
-`main` 和 `dev` 保持一致；`dev` 仅作为开发起点，不直接积累开发提交。开始开发时先同步，再从 `dev` 创建独立分支：
+`main` 和 `dev` 在合并完成后保持一致；开发提交在独立分支上完成，先合入 `dev`，再合入 `main`。开始开发时先同步，再从 `dev` 创建独立分支：
 
 ```powershell
 git fetch origin
@@ -118,6 +118,18 @@ git merge --ff-only origin/main
 git switch -c feature/your-feature
 ```
 
-开发分支合并到 `main` 后，`Sync Dev` 工作流自动将远程 `dev` 快进到 `main`。同步存在短暂延迟；若 `dev` 意外分叉，工作流报错，需先处理分叉，不强制覆盖提交。工作流需要 GitHub Actions 启用，且分支规则允许工作流推送 `dev`。
+开发分支合入 `dev`、`dev` 合入 `main` 时统一使用 `--no-ff`，保留分叉与合并轨迹。合并后将 `dev` 快进同步到 `main`，使两个分支指向同一提交：
+
+```powershell
+git switch dev
+git merge --no-ff feature/your-feature
+git switch main
+git merge --no-ff dev
+git switch dev
+git merge --ff-only main
+git push origin main dev
+```
+
+上述快进操作仅用于分支同步。`main` 推送后，`Sync Dev` 工作流也会自动将远程 `dev` 快进到 `main`。同步存在短暂延迟；若 `dev` 意外分叉，工作流报错，需先处理分叉，不强制覆盖提交。工作流需要 GitHub Actions 启用，且分支规则允许工作流推送 `dev`。
 
 发布使用附注标签 `vX.Y.Z`。`v0.1.0` 固定指向首次发布提交 `92e4b7e`；标签不随后续分支更新移动。
