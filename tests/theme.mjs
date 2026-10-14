@@ -37,7 +37,7 @@ try {
       const elapsed = performance.now() - start;
       if (reverse && !reversed && elapsed >= 70) { button.click(); reversed = true; }
       const color = selector => getComputedStyle(document.querySelector(selector)).backgroundColor;
-      frames.push({ elapsed, background: color('.application'), toolbar: color('.toolbar'), palette: getComputedStyle(root).getPropertyValue('--bg').trim() });
+      frames.push({ elapsed, background: color('.application'), toolbar: color('.toolbar'), titlebar: document.querySelector('.native-titlebar') ? color('.native-titlebar') : null, palette: getComputedStyle(root).getPropertyValue('--bg').trim() });
     }
     observer.disconnect();
     return { frames, before, after: { scroll: reader.scrollTop, height: content.getBoundingClientRect().height }, mutations, theme: root.dataset.theme };
@@ -50,6 +50,7 @@ try {
     const values = result.frames.map(frame => red(frame.background));
     assert.ok(values.some(value => value > 35 && value < 245), 'Expected intermediate palette colors');
     assert.ok(result.frames.every(frame => frame.background === frame.toolbar), 'Surfaces must transition together');
+    if (native) assert.ok(result.frames.every(frame => frame.background === frame.titlebar), 'Window titlebar and reading panel must have the same color in every frame');
     assert.equal(values.at(-1), dark ? 25 : 255);
     for (let i = 1; i < values.length; i++) assert.ok(dark ? values[i] <= values[i - 1] + 1 : values[i] >= values[i - 1] - 1, 'Palette must not flash or reverse brightness');
   };

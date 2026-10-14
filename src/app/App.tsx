@@ -7,6 +7,7 @@ import { ReadingHistory, type ReadingPosition } from '../services/navigation';
 import SearchPanel from '../components/SearchPanel';
 import { version } from '../../package.json';
 import { useTheme } from '../hooks/useTheme';
+import Titlebar from '../components/Titlebar';
 
 const defaultSettings:Settings={recent:[],theme:'light',sidebar:true,fontSize:16,width:1280,height:860};
 const formatBytes=(bytes:number)=>bytes>=1024**3?`${(bytes/1024**3).toFixed(2)} GiB`:bytes>=1024**2?`${(bytes/1024**2).toFixed(1)} MiB`:bytes>=1024?`${(bytes/1024).toFixed(1)} KB`:`${bytes} B`;
@@ -80,7 +81,8 @@ export default function App(){
     if(e.ctrlKey&&e.key==='Home'){e.preventDefault();jump(0);}
     if(e.ctrlKey&&e.key==='End'){e.preventDefault();if(docRef.current)jump(docRef.current.size-1);}
   };const mouse=(e:MouseEvent)=>{if(e.button===3||e.button===4){e.preventDefault();travel(e.button===3?'back':'forward');}};window.addEventListener('keydown',key);window.addEventListener('mouseup',mouse);return()=>{window.removeEventListener('keydown',key);window.removeEventListener('mouseup',mouse);};},[pick,jump,travel,progress]);
-  return <div className="application" onDragOver={e=>{if(!native)e.preventDefault();}} onDrop={e=>{if(native)return;e.preventDefault();setError('浏览器预览请使用打开文件按钮；桌面版支持资源管理器拖放。');}}>
+  return <div className={`application${native?' has-native-titlebar':''}`} onDragOver={e=>{if(!native)e.preventDefault();}} onDrop={e=>{if(native)return;e.preventDefault();setError('浏览器预览请使用打开文件按钮；桌面版支持资源管理器拖放。');}}>
+    {native&&<Titlebar onError={setError}/>}
     <header className="toolbar">
       <div className="brand"><span className="brand-icon"><FileText size={21}/></span><span>GBMarkdown</span></div>
       <div className="toolbar-separator"/>
