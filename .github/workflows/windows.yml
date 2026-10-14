@@ -36,6 +36,8 @@ jobs:
             if($LASTEXITCODE -ne 0){throw 'Navigation regression failed'}
             npm run test:copy
             if($LASTEXITCODE -ne 0){throw 'Clipboard regression failed'}
+            npm run test:theme
+            if($LASTEXITCODE -ne 0){throw 'Theme regression failed'}
           } finally {Stop-Process -Id $gbmServer.Id -ErrorAction SilentlyContinue}
       - run: npm run tauri -- build --bundles nsis
       - run: ./scripts/package.ps1

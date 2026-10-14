@@ -21,7 +21,7 @@ Windows 安装包、离线安装包和便携版可从 [GitHub Releases](https://
 
 文档内 `[链接](#标题锚点)` 可跳转到全文标题，支持中文和 URL 编码。标题文字转小写、空白替换为 `-`、去掉格式与标点；重复标题依次使用 `-1`、`-2` 后缀，编号冲突继续递增。标题锚点保存在磁盘索引中；尚未扫描到的目标会等待索引，也可取消。原始 HTML 自定义锚点和跨文件 Markdown 链接暂不支持。
 
-工具栏前进、后退按钮及 `Alt+Left/Right` 可恢复跳转前的阅读位置。内部链接、目录、搜索、百分比和文档首尾跳转共享最多 200 条文档内历史，打开或重新加载文件会清空。明暗主题同时切换 Windows 原生标题栏。
+工具栏前进、后退按钮及 `Alt+Left/Right` 可恢复跳转前的阅读位置。内部链接、目录、搜索、百分比和文档首尾跳转共享最多 200 条文档内历史，打开或重新加载文件会清空。明暗主题同步切换 Windows 原生标题栏；页面使用约 220 毫秒的颜色渐变，保持阅读位置，系统开启“减少动态效果”时直接切换。原生标题栏仍由 Windows 直接换色。
 
 代码块右上角的复制按钮保留代码缩进、换行及 Unicode；行内和独立公式旁的按钮复制 LaTeX 源码，不包含 `$` 分隔符。复制不受高亮、搜索标记或公式排版影响。超大代码块按当前阅读片段复制，按钮提示为“复制当前代码片段”；无效公式仍可复制原始 LaTeX。成功显示勾号，失败可重试。
 
@@ -48,6 +48,7 @@ npm run test:ui
 npm run test:math
 npm run test:navigation
 npm run test:copy
+npm run test:theme
 npm run tauri -- build --bundles nsis
 ./scripts/package.ps1
 # 先保留普通安装包，再打包离线变体。
@@ -58,6 +59,8 @@ npm run tauri -- bundle --bundles nsis --config src-tauri/tauri.offline.conf.jso
 ```
 
 UI 测试使用本机 Edge 无头模式。`tests/desktop.mjs` 连接专用于验收的 WebView2 调试端口 9229，验证实际 Tauri IPC、1 GiB 文档、跳转、搜索高亮和主题；正常应用不启用远程调试。
+
+`tests/theme.mjs` 逐帧检查明暗颜色过渡、快速反向切换、阅读布局和减少动态效果设置；设置 `GBM_CDP_URL` 可连接已打开文档的专用原生验收窗口。
 
 `tests/math.mjs` 默认测试浏览器公式渲染、搜索、字体、安全策略、预算及排版后滚动锚点；设置 `GBM_CDP_URL` 后可连接已打开 `tests/fixtures/math.md` 的原生验收窗口。
 

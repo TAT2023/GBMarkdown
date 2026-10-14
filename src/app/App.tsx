@@ -6,11 +6,13 @@ import MarkdownView, { type ReaderHandle } from '../components/MarkdownView';
 import { ReadingHistory, type ReadingPosition } from '../services/navigation';
 import SearchPanel from '../components/SearchPanel';
 import { version } from '../../package.json';
+import { useTheme } from '../hooks/useTheme';
 
 const defaultSettings:Settings={recent:[],theme:'light',sidebar:true,fontSize:16,width:1280,height:860};
 const formatBytes=(bytes:number)=>bytes>=1024**3?`${(bytes/1024**3).toFixed(2)} GiB`:bytes>=1024**2?`${(bytes/1024**2).toFixed(1)} MiB`:bytes>=1024?`${(bytes/1024).toFixed(1)} KB`:`${bytes} B`;
 export default function App(){
   const [settings,setSettings]=useState<Settings>(defaultSettings);const settingsRef=useRef(settings);settingsRef.current=settings;
+  const [settingsReady,setSettingsReady]=useState(false);
   const [doc,setDoc]=useState<DocumentInfo|null>(null);const docRef=useRef(doc);docRef.current=doc;
   const [status,setStatus]=useState<IndexStatus|null>(null);const [opening,setOpening]=useState(false);const [changed,setChanged]=useState(false);const [warning,setWarning]=useState<string|null>(null);const [error,setError]=useState('');
   const [outlinePosition,setOutlinePosition]=useState(0);const indexReady=useRef(false);
@@ -54,11 +56,11 @@ export default function App(){
   const pick=useCallback(async()=>{const g=++generation.current;navigation.current++;setLocating(false);setOpening(true);remember();try{const info=await api.pick();if(info&&g===generation.current)accept(info);}catch(e){setError(String(e));}finally{setOpening(false);}},[accept,remember]);
   const close=useCallback(async()=>{generation.current++;navigation.current++;setLocating(false);history.current.clear();refreshHistory();remember();const d=docRef.current;setDoc(null);setStatus(null);setSearchOpen(false);setWarning(null);setChanged(false);if(d)await api.close(d.id).catch(e=>setError(String(e)));},[remember,refreshHistory]);
   useEffect(()=>{let cancelled=false;
-    void api.settings().then(async(s)=>{if(cancelled)return;setSettings({...defaultSettings,...s});settingsRef.current={...defaultSettings,...s};const path=await api.launch();if(cancelled)return;if(path)void openPath(path);else if(!native){const info=await api.demo();if(!cancelled)accept(info);}}).catch(e=>setError(String(e)));
+    void api.settings().then(async(s)=>{if(cancelled)return;setSettings({...defaultSettings,...s});settingsRef.current={...defaultSettings,...s};setSettingsReady(true);const path=await api.launch();if(cancelled)return;if(path)void openPath(path);else if(!native){const info=await api.demo();if(!cancelled)accept(info);}}).catch(e=>{if(!cancelled){setSettingsReady(true);setError(String(e));}});
     return()=>{cancelled=true;};
   },[]);
-  useEffect(()=>{document.documentElement.dataset.theme=settings.theme;if(!native)return;let cancelled=false;void import('@tauri-apps/api/window').then(({getCurrentWindow})=>{if(!cancelled)return getCurrentWindow().setTheme(settings.theme==='dark'?'dark':'light');}).catch(e=>setError(`标题栏主题切换失败：${String(e)}`));return()=>{cancelled=true;};},[settings.theme]);
-  useEffect(()=>{const timer=setTimeout(()=>{void api.save(settings).catch(()=>{});},400);return()=>clearTimeout(timer);},[settings]);
+  useTheme(settings.theme,settingsReady,setError);
+  useEffect(()=>{if(!settingsReady)return;const timer=setTimeout(()=>{void api.save(settings).catch(()=>{});},400);return()=>clearTimeout(timer);},[settings,settingsReady]);
   useEffect(()=>{if(!doc)return;let stopped=false;let timer:ReturnType<typeof setTimeout>;
     const poll=async()=>{try{const s=await api.status(doc.id,offsetRef.current);if(stopped)return;setStatus(s.index);setOutlinePosition(s.outlinePosition);if(s.index.complete&&!indexReady.current){indexReady.current=true;const p=position();setTarget(t=>({...p,version:t.version+1}));}if(s.changed){navigation.current++;setLocating(false);setChanged(true);void api.cancel(doc.id);}if(s.index.error)setWarning(s.index.error);}catch(e){if(!stopped)setWarning(String(e));}if(!stopped)timer=setTimeout(poll,600);};void poll();return()=>{stopped=true;clearTimeout(timer);};
   },[doc?.id]);

@@ -1,0 +1,29 @@
+@property --bg { syntax: '<color>'; inherits: true; initial-value: #fff; }
+@property --surface { syntax: '<color>'; inherits: true; initial-value: #f7f9fa; }
+@property --hover { syntax: '<color>'; inherits: true; initial-value: #edf1f3; }
+@property --text { syntax: '<color>'; inherits: true; initial-value: #30363b; }
+@property --muted { syntax: '<color>'; inherits: true; initial-value: #879098; }
+@property --border { syntax: '<color>'; inherits: true; initial-value: #e7ebee; }
+@property --accent { syntax: '<color>'; inherits: true; initial-value: #16806a; }
+@property --accent-bg { syntax: '<color>'; inherits: true; initial-value: #eaf5f1; }
+@property --code { syntax: '<color>'; inherits: true; initial-value: #f5f7f8; }
+
+/* Animate one inherited palette so nested surfaces and text change together. */
+:root {
+  color: var(--text);
+  background: var(--bg);
+}
+:root[data-theme-transition] {
+  transition-property: --bg, --surface, --hover, --text, --muted, --border, --accent, --accent-bg, --code;
+  transition-duration: 220ms;
+  transition-timing-function: ease-in-out;
+}
+:root[data-theme-transition] .markdown-body code span {
+  transition: color 220ms ease-in-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme-transition],
+  :root[data-theme-transition] .markdown-body code span {
+    transition: none;
+  }
+}
