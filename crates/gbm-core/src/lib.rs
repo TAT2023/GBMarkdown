@@ -225,15 +225,16 @@ impl Document {
             let mut text = String::new();
             let mut end = self.source.bom;
             let mut cut = false;
-            let mut in_math = false;
+            let mut math = gbm_parser::DisplayMathState::default();
             for line in Lines::new(&self.source, self.source.bom) {
                 let c = line?;
                 text.push_str(&c.text);
                 end = c.end;
-                if c.text.trim() == "$$" {
-                    in_math = !in_math;
-                }
-                if end - self.source.bom >= PAGE_TARGET && c.text.trim().is_empty() && !in_math {
+                math.update(&c.text);
+                if end - self.source.bom >= PAGE_TARGET
+                    && c.text.trim().is_empty()
+                    && !math.is_open()
+                {
                     break;
                 }
                 if end - self.source.bom >= PAGE_LIMIT {
