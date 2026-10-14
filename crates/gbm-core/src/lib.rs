@@ -131,6 +131,20 @@ impl Document {
     pub fn outline(&self, start: u64, limit: usize) -> io::Result<Vec<Heading>> {
         self.index.outline(&self.source, start, limit)
     }
+    pub fn resolve_anchor(&self, fragment: &str) -> io::Result<Option<u64>> {
+        if self.closed.load(Ordering::Relaxed) || self.changed() {
+            return Err(io::Error::other(
+                "Document closed or changed; reload before navigating",
+            ));
+        }
+        if let Some(error) = self.status().error {
+            return Err(io::Error::other(error));
+        }
+        if fragment.is_empty() {
+            return Ok(Some(self.source.bom));
+        }
+        self.index.resolve_anchor(fragment)
+    }
     pub fn render_window(
         &self,
         offset: u64,
