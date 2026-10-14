@@ -12,6 +12,8 @@ use std::{
     },
 };
 const REFERENCES: TableDefinition<&str, &str> = TableDefinition::new("references");
+const ANCHORS: TableDefinition<&str, u64> = TableDefinition::new("anchors");
+const ANCHOR_COUNTS: TableDefinition<&str, u64> = TableDefinition::new("anchor_counts");
 fn db_error(e: impl std::fmt::Display) -> io::Error {
     io::Error::other(e.to_string())
 }
@@ -84,7 +86,7 @@ impl DiskIndex {
             .ok()
             .and_then(|b| serde_json::from_slice::<Manifest>(&b).ok())
             .filter(|m| {
-                m.version == 8
+                m.version == 9
                     && m.identity == source.identity
                     && directory
                         .join("pages.bin")
@@ -107,8 +109,12 @@ impl DiskIndex {
             File::create(directory.join("headings.bin"))?;
             let tx = references.begin_write().map_err(db_error)?;
             tx.delete_table(REFERENCES).map_err(db_error)?;
+            tx.delete_table(ANCHORS).map_err(db_error)?;
+            tx.delete_table(ANCHOR_COUNTS).map_err(db_error)?;
             {
                 tx.open_table(REFERENCES).map_err(db_error)?;
+                tx.open_table(ANCHORS).map_err(db_error)?;
+                tx.open_table(ANCHOR_COUNTS).map_err(db_error)?;
             }
             tx.commit().map_err(db_error)?;
         }
@@ -211,6 +217,42 @@ impl DiskIndex {
         }
         Ok(lo.saturating_sub(1))
     }
+    pub fn resolve_anchor(&self, fragment: &str) -> io::Result<Option<u64>> {
+        if fragment.len() > 16 * 1024 {
+            return Err(io::Error::other("Anchor is too long"));
+        }
+        let tx = self.references.begin_read().map_err(db_error)?;
+        let table = tx.open_table(ANCHORS).map_err(db_error)?;
+        let result = table.get(fragment).map_err(db_error)?.map(|v| v.value());
+        Ok(result)
+    }
+    fn commit_anchors(&self, entries: &mut Vec<(String, u64)>) -> io::Result<()> {
+        if entries.is_empty() {
+            return Ok(());
+        }
+        let tx = self.references.begin_write().map_err(db_error)?;
+        {
+            let mut anchors = tx.open_table(ANCHORS).map_err(db_error)?;
+            let mut counts = tx.open_table(ANCHOR_COUNTS).map_err(db_error)?;
+            for (slug, offset) in entries.drain(..) {
+                let mut number = counts
+                    .get(slug.as_str())
+                    .map_err(db_error)?
+                    .map(|v| v.value())
+                    .unwrap_or(0);
+                let mut candidate = slug.clone();
+                while anchors.get(candidate.as_str()).map_err(db_error)?.is_some() {
+                    number += 1;
+                    candidate = format!("{slug}-{number}");
+                }
+                counts.insert(slug.as_str(), number).map_err(db_error)?;
+                anchors
+                    .insert(candidate.as_str(), offset)
+                    .map_err(db_error)?;
+            }
+        }
+        tx.commit().map_err(db_error)
+    }
     pub fn build(&self, source: &LocalFile) -> io::Result<()> {
         if self.status.lock().unwrap().complete {
             return Ok(());
@@ -230,10 +272,13 @@ impl DiskIndex {
         );
         let mut definitions: Vec<(String, String, String)> = Vec::new();
         let mut definition_bytes = 0usize;
+        let mut anchors = Vec::new();
+        let mut anchor_bytes = 0usize;
+        let mut anchors_flushed = source.bom;
         let mut fence: Option<(u8, usize, String)> = None;
         let mut start_fence = fence.clone();
         let (mut start, mut line, mut start_line) = (source.bom, 1, 1);
-        let mut previous: Option<u64> = None;
+        let mut previous: Option<(u64, String)> = None;
         let (mut page_count, mut heading_count, mut validated) = (0, 0, 0);
         let (mut in_list, mut start_list) = (false, false);
         let (mut in_math, mut start_math) = (false, false);
@@ -321,13 +366,16 @@ impl DiskIndex {
                             true,
                         )?;
                         heading_count += 1;
+                        let slug = gbm_parser::heading_slug(text);
+                        anchor_bytes += slug.len() + 16;
+                        anchors.push((slug, chunk.start));
                     } else if !trimmed.is_empty()
                         && trimmed
                             .bytes()
                             .all(|b| b == b'=' || b == b' ' || b == b'\t')
                         && marker == b'='
                     {
-                        if let Some(offset) = previous.take() {
+                        if let Some((offset, title)) = previous.take() {
                             self.write_heading(
                                 &mut headings,
                                 offset,
@@ -336,6 +384,9 @@ impl DiskIndex {
                                 false,
                             )?;
                             heading_count += 1;
+                            let slug = gbm_parser::heading_slug(&format!("{title}\n===\n"));
+                            anchor_bytes += slug.len() + 16;
+                            anchors.push((slug, offset));
                         }
                     } else if !trimmed.is_empty()
                         && trimmed
@@ -343,7 +394,7 @@ impl DiskIndex {
                             .all(|b| b == b'-' || b == b' ' || b == b'\t')
                         && marker == b'-'
                     {
-                        if let Some(offset) = previous.take() {
+                        if let Some((offset, title)) = previous.take() {
                             self.write_heading(
                                 &mut headings,
                                 offset,
@@ -352,6 +403,9 @@ impl DiskIndex {
                                 false,
                             )?;
                             heading_count += 1;
+                            let slug = gbm_parser::heading_slug(&format!("{title}\n---\n"));
+                            anchor_bytes += slug.len() + 16;
+                            anchors.push((slug, offset));
                         }
                     }
                     if trimmed.starts_with('[') && trimmed.contains("]:") && trimmed.len() < 4096 {
@@ -395,6 +449,11 @@ impl DiskIndex {
                 page_count += 1;
                 pages.flush()?;
                 headings.flush()?;
+                if page_count == 1 || chunk.end.saturating_sub(anchors_flushed) >= 8 * 1024 * 1024 {
+                    self.commit_anchors(&mut anchors)?;
+                    anchor_bytes = 0;
+                    anchors_flushed = chunk.end;
+                }
                 let mut s = self.status.lock().unwrap();
                 s.pages = page_count;
                 s.headings = heading_count;
@@ -414,7 +473,7 @@ impl DiskIndex {
                 && !chunk.continued
                 && !trimmed.starts_with(['#', '>', '[', '-', '*', '`', '~'])
             {
-                previous = Some(chunk.start);
+                previous = Some((chunk.start, text.to_owned()));
             } else {
                 previous = None;
             }
@@ -432,6 +491,11 @@ impl DiskIndex {
             if definition_bytes >= 64 * 1024 {
                 self.commit_definitions(&mut definitions)?;
                 definition_bytes = 0;
+            }
+            if anchor_bytes >= 64 * 1024 {
+                self.commit_anchors(&mut anchors)?;
+                anchor_bytes = 0;
+                anchors_flushed = chunk.end;
             }
         }
         if start < source.size() {
@@ -457,6 +521,7 @@ impl DiskIndex {
             return Err(io::Error::other("Source changed during indexing"));
         }
         self.commit_definitions(&mut definitions)?;
+        self.commit_anchors(&mut anchors)?;
         pages.flush()?;
         headings.flush()?;
         pages.get_ref().sync_all()?;
@@ -470,7 +535,7 @@ impl DiskIndex {
             s.clone()
         };
         let manifest = Manifest {
-            version: 8,
+            version: 9,
             identity: source.identity.clone(),
             status,
         };
@@ -533,6 +598,66 @@ fn write_page(f: &mut impl Write, p: &Page) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn anchors_are_global_persistent_and_preserve_raw_offsets() {
+        for utf16 in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("anchors.md");
+            let text = format!("# **中文** `Code` &amp; Test!\n\n# Repeat\n\n# Repeat\n\n# Repeat-1\n\n```md\n# Fake\n```\n\n$$\n# Not a heading\n$$\n\n{}\nSetext Title\n---\n\n# Last", "paragraph\n\n".repeat(5000));
+            let bytes = if utf16 {
+                [
+                    vec![0xff, 0xfe],
+                    text.encode_utf16().flat_map(u16::to_le_bytes).collect(),
+                ]
+                .concat()
+            } else {
+                text.as_bytes().to_vec()
+            };
+            std::fs::write(&path, bytes).unwrap();
+            let source = LocalFile::open(&path).unwrap();
+            let root = dir.path().join("cache");
+            let index = DiskIndex::new(&root, &source).unwrap();
+            assert_eq!(index.resolve_anchor("last").unwrap(), None);
+            index.build(&source).unwrap();
+            let expected = |needle: &str| {
+                let start = text.find(needle).unwrap();
+                if utf16 {
+                    2 + text[..start].encode_utf16().count() as u64 * 2
+                } else {
+                    start as u64
+                }
+            };
+            assert_eq!(
+                index.resolve_anchor("中文-code--test").unwrap(),
+                Some(source.bom)
+            );
+            assert_eq!(
+                index.resolve_anchor("repeat-1").unwrap(),
+                Some(expected("# Repeat\n\n# Repeat-1"))
+            );
+            assert_eq!(
+                index.resolve_anchor("repeat-1-1").unwrap(),
+                Some(expected("# Repeat-1"))
+            );
+            assert_eq!(
+                index.resolve_anchor("setext-title").unwrap(),
+                Some(expected("Setext Title"))
+            );
+            assert_eq!(
+                index.resolve_anchor("last").unwrap(),
+                Some(expected("# Last"))
+            );
+            assert_eq!(index.resolve_anchor("fake").unwrap(), None);
+            assert_eq!(index.resolve_anchor("not-a-heading").unwrap(), None);
+            assert_eq!(index.resolve_anchor("missing").unwrap(), None);
+            let cached = DiskIndex::new(&root, &source).unwrap();
+            assert!(cached.status.lock().unwrap().cached);
+            assert_eq!(
+                cached.resolve_anchor("last").unwrap(),
+                Some(expected("# Last"))
+            );
+        }
+    }
     #[test]
     fn disk_pages_cover_giant_fence_and_outline_excludes_code() {
         let dir = tempfile::tempdir().unwrap();

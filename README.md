@@ -4,7 +4,7 @@ Windows 10/11 x64 本地只读 Markdown 阅读器。Rust Workspace + Tauri 2 + R
 
 ## 使用
 
-Windows 安装包、离线安装包和便携版可从 [GitHub Releases](https://github.com/TAT2023/GBMarkdown/releases) 下载；0.2.0 新增数学公式渲染，0.1.0 保留首次发布功能。
+Windows 安装包、离线安装包和便携版可从 [GitHub Releases](https://github.com/TAT2023/GBMarkdown/releases) 下载；0.3.0 新增内部链接、阅读历史、代码与公式源码复制，并修复夜间模式标题栏；0.2.0 新增数学公式渲染，0.1.0 保留首次发布功能。
 
 构建产物位于 `release/`：
 
@@ -18,6 +18,12 @@ Windows 安装包、离线安装包和便携版可从 [GitHub Releases](https://
 首次打开先显示一个有限阅读窗口，目录和结构索引随后在后台建立。底部进度条、目录和百分比输入框可跳转到全文任意位置。索引尚未覆盖的远距离位置先显示文本，完成后恢复结构渲染。
 
 数学公式支持 `$...$` 行内公式和 `$$...$$` 独立公式，包括分式、积分、矩阵和 `aligned` 多行对齐。Rust 识别公式后，前端按需加载 KaTeX；排版引擎和字体随程序本地打包，不依赖网络。代码块、行内代码和转义的美元符号保持原文。公式搜索命中会高亮整个公式，不修改其内部排版。
+
+文档内 `[链接](#标题锚点)` 可跳转到全文标题，支持中文和 URL 编码。标题文字转小写、空白替换为 `-`、去掉格式与标点；重复标题依次使用 `-1`、`-2` 后缀，编号冲突继续递增。标题锚点保存在磁盘索引中；尚未扫描到的目标会等待索引，也可取消。原始 HTML 自定义锚点和跨文件 Markdown 链接暂不支持。
+
+工具栏前进、后退按钮及 `Alt+Left/Right` 可恢复跳转前的阅读位置。内部链接、目录、搜索、百分比和文档首尾跳转共享最多 200 条文档内历史，打开或重新加载文件会清空。明暗主题同时切换 Windows 原生标题栏。
+
+代码块右上角的复制按钮保留代码缩进、换行及 Unicode；行内和独立公式旁的按钮复制 LaTeX 源码，不包含 `$` 分隔符。复制不受高亮、搜索标记或公式排版影响。超大代码块按当前阅读片段复制，按钮提示为“复制当前代码片段”；无效公式仍可复制原始 LaTeX。成功显示勾号，失败可重试。
 
 公式使用 KaTeX 支持的 TeX 语法；非法或过大的公式保留原始内容。单公式输入上限 4,096 个字符，每个阅读片段最多排版 128 个公式，累计输入不超过 16,384 个字符、输出 HTML 不超过 512×1024 个字符和 12,000 个元素。宏展开次数和尺寸也有上限，不允许公式创建可信 HTML 或外部资源。跨页超大独立公式使用兼容文本模式，结束后恢复正常 Markdown。
 
@@ -40,18 +46,22 @@ cargo clippy --workspace --all-targets -- -D warnings
 npm run build
 npm run test:ui
 npm run test:math
+npm run test:navigation
+npm run test:copy
 npm run tauri -- build --bundles nsis
 ./scripts/package.ps1
 # 先保留普通安装包，再打包离线变体。
 npm run tauri -- bundle --bundles nsis --config src-tauri/tauri.offline.conf.json
 ./scripts/package.ps1 -Offline
 # 发布时可分别保存每个版本的产物。
-./scripts/package.ps1 -Offline -OutputDirectory release/v0.2.0
+./scripts/package.ps1 -Offline -OutputDirectory release/v0.3.0
 ```
 
 UI 测试使用本机 Edge 无头模式。`tests/desktop.mjs` 连接专用于验收的 WebView2 调试端口 9229，验证实际 Tauri IPC、1 GiB 文档、跳转、搜索高亮和主题；正常应用不启用远程调试。
 
 `tests/math.mjs` 默认测试浏览器公式渲染、搜索、字体、安全策略、预算及排版后滚动锚点；设置 `GBM_CDP_URL` 后可连接已打开 `tests/fixtures/math.md` 的原生验收窗口。
+
+`node tests/navigation.mjs --fixture` 生成 `artifacts/navigation.md`；以该文件启动专用验收窗口后，设置 `GBM_CDP_URL` 可复测原生链接和历史。`tests/windows-theme.ps1 -ReaderProcessId <进程ID> -Theme dark -Screenshot artifacts/native-window-dark.png` 检查实际 Windows 标题栏暗色属性并截图，亮色用 `-Theme light`。
 
 发布目录的 `SHA256SUMS.txt` 提供压缩包和安装包的 SHA256 校验值。
 
@@ -60,7 +70,7 @@ UI 测试使用本机 Edge 无头模式。`tests/desktop.mjs` 连接专用于验
 | 模块 | 实现 |
 | --- | --- |
 | `gbm-file` | Windows seek_read / Unix read_at；8 MiB 扫描缓冲；UTF-8 和带 BOM 的 UTF-16 LE/BE；64 KiB 行片段上限 |
-| `gbm-index` | 64 字节阅读区段记录，磁盘二分定位；16 字节标题位置记录；磁盘分页读取标题正文；redb 存储全局引用定义 |
+| `gbm-index` | 64 字节阅读区段记录，磁盘二分定位；16 字节标题位置记录；磁盘分页读取标题正文；redb 存储全局引用定义及标题锚点，重复编号也在磁盘维护 |
 | `gbm-parser` | pulldown-cmark，GFM 表格、任务列表和删除线；原始 HTML 转义；安全链接和本地图片占位；源字节位置映射 |
 | `gbm-render` | 有界 HTML 片段；普通 Markdown、围栏内代码和超大块兼容文本 |
 | `gbm-search` | UTF-8 字面量使用 memmem 流式扫描；Unicode 小写匹配及 UTF-16 保留原始字节偏移；跨缓冲匹配和取消 |

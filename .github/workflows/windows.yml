@@ -18,7 +18,7 @@ jobs:
       - run: cargo test --workspace --exclude gbmarkdown
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: npm run build
-      - name: UI and math regression tests
+      - name: UI, math, navigation and clipboard regression tests
         shell: pwsh
         run: |
           $gbmServer=Start-Process -FilePath (Get-Command node).Source -ArgumentList 'node_modules/vite/bin/vite.js --host 127.0.0.1' -WindowStyle Hidden -PassThru
@@ -32,6 +32,10 @@ jobs:
             if($LASTEXITCODE -ne 0){throw 'UI regression failed'}
             npm run test:math
             if($LASTEXITCODE -ne 0){throw 'Math regression failed'}
+            npm run test:navigation
+            if($LASTEXITCODE -ne 0){throw 'Navigation regression failed'}
+            npm run test:copy
+            if($LASTEXITCODE -ne 0){throw 'Clipboard regression failed'}
           } finally {Stop-Process -Id $gbmServer.Id -ErrorAction SilentlyContinue}
       - run: npm run tauri -- build --bundles nsis
       - run: ./scripts/package.ps1

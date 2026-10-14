@@ -1,16 +1,23 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from 'react';
 import DOMPurify from 'dompurify';
+import { createPortal } from 'react-dom';
 import { api, type Block, type DocumentInfo, type RenderWindow } from '../services/document-api';
 import { ArrowUp, LoaderCircle } from 'lucide-react';
 import { highlight } from '../services/highlight';
 import { renderMath } from '../services/math';
+import type { ReadingPosition } from '../services/navigation';
+import { prepareCopyTargets, type CopyTarget } from '../services/source-copy';
+import SourceCopyButton from './SourceCopyButton';
+export interface ReaderHandle {position:()=>ReadingPosition}
 let imageMemory=0;
-function Fragment({block,documentId,query}:{block:Block;documentId:string;query:string}){
+function Fragment({block,documentId,query,onLink}:{block:Block;documentId:string;query:string;onLink:(href:string)=>void}){
   const root=useRef<HTMLDivElement>(null);
+  const [copyTargets,setCopyTargets]=useState<CopyTarget[]>([]);
   const safeHTML=useMemo(()=>DOMPurify.sanitize(block.html,{ADD_ATTR:['data-local-image','data-title','data-source-offset','data-math'],FORBID_TAGS:['script','iframe','style','object'],FORBID_ATTR:['style']}),[block.html]);
-  useEffect(()=>{
+  useLayoutEffect(()=>{
     const el=root.current;if(!el)return;const controller=new AbortController();
     el.innerHTML=safeHTML;
+    setCopyTargets(prepareCopyTargets(el,block.mode==='code'));
     if(query)el.querySelectorAll<HTMLElement>('[data-math]').forEach(node=>{if(node.textContent?.toLowerCase().includes(query.toLowerCase()))node.classList.add('math-search-match');});
     const resources=new Map<HTMLElement,{visible:boolean;loading:boolean;memory:number;alt:string;image:HTMLImageElement|null}>();
     const release=(slot:HTMLElement)=>{const resource=resources.get(slot);if(!resource)return;imageMemory-=resource.memory;resource.memory=0;resource.image?.removeAttribute('src');resource.image=null;slot.textContent=resource.alt;};
@@ -23,21 +30,31 @@ function Fragment({block,documentId,query}:{block:Block;documentId:string;query:
     el.querySelectorAll('[data-local-image]').forEach(slot=>observer.observe(slot));
     void Promise.all([highlight(el,controller.signal).catch(()=>{}),renderMath(el,controller.signal).catch(()=>{})]).then(()=>{
       if(controller.signal.aborted||!query)return;
-      const walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);const nodes:Text[]=[];let n:Node|null;while((n=walker.nextNode())){if(n.parentElement?.closest('script,style,[data-math]'))continue;nodes.push(n as Text);}
+      const walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);const nodes:Text[]=[];let n:Node|null;while((n=walker.nextNode())){if(n.parentElement?.closest('script,style,[data-math],[data-copy-controls]'))continue;nodes.push(n as Text);}
       for(const node of nodes){const text=node.data;const lower=text.toLowerCase();let start=0,pos=lower.indexOf(query.toLowerCase());if(pos<0)continue;const fragment=document.createDocumentFragment();while(pos>=0){fragment.append(text.slice(start,pos));const mark=document.createElement('mark');mark.textContent=text.slice(pos,pos+query.length);fragment.append(mark);start=pos+query.length;pos=lower.indexOf(query.toLowerCase(),start);}fragment.append(text.slice(start));node.replaceWith(fragment);}
     });
     return()=>{controller.abort();observer.disconnect();for(const slot of resources.keys())release(slot);};
-  },[block.html,documentId,query]);
-  return <div ref={root} className="markdown-body" data-source-start={block.start} dangerouslySetInnerHTML={{__html:safeHTML}} onClick={e=>{const link=(e.target as Element).closest('a');if(link){e.preventDefault();void api.external(link.getAttribute('href')||'');}}}/>;
+  },[block.html,block.mode,documentId,query]);
+  return <><div ref={root} className="markdown-body" data-source-start={block.start} dangerouslySetInnerHTML={{__html:safeHTML}} onClick={e=>{const link=(e.target as Element).closest('a');if(link){e.preventDefault();onLink(link.getAttribute('href')||'');}}}/>{copyTargets.map((target,index)=>createPortal(<SourceCopyButton target={target}/>,target.container,index))}</>;
 }
 
-export default function MarkdownView({doc,target,fontSize,query,onProgress,onWarning}:{doc:DocumentInfo;target:{offset:number;version:number};fontSize:number;query:string;onProgress:(n:number)=>void;onWarning:(s:string|null)=>void}){
+export default function MarkdownView({doc,target,fontSize,query,onProgress,onWarning,onLink,onJump,ref}:{doc:DocumentInfo;target:ReadingPosition&{version:number};fontSize:number;query:string;onProgress:(n:number)=>void;onWarning:(s:string|null)=>void;onLink:(href:string)=>void;onJump:(offset:number)=>void;ref:Ref<ReaderHandle>}){
   const parent=useRef<HTMLDivElement>(null);const [windowData,setWindow]=useState<RenderWindow|null>(null);const [loading,setLoading]=useState(false);
   const request=useRef(0);const loadingEdge=useRef(false);const anchor=useRef<{offset:number;top:number}|null>(null);const jumpPending=useRef<number|null>(null);const navigating=useRef(false);
   const blocks=windowData?.blocks||[];
+  useImperativeHandle(ref,()=>({position:()=>{
+    const el=parent.current;if(!el||navigating.current||loading)return {offset:target.offset,displacement:target.displacement};
+    if(el.scrollTop<1&&windowData?.start===doc.bom)return {offset:doc.bom,displacement:0};
+    const top=el.getBoundingClientRect().top;
+    const row=[...el.querySelectorAll<HTMLElement>('[data-block]')].find(r=>r.getBoundingClientRect().bottom>top+10);
+    if(row){const marker=[...row.querySelectorAll<HTMLElement>('[data-source-offset]')].filter(m=>m.getBoundingClientRect().top<=top+30).at(-1)||row.querySelector<HTMLElement>('[data-source-offset]');
+      if(marker)return {offset:Number(marker.dataset.sourceOffset),displacement:top+20-marker.getBoundingClientRect().top};
+      const block=blocks.find(b=>b.start===Number(row.dataset.block));if(block){const rect=row.getBoundingClientRect();return {offset:Math.round(block.start+Math.max(0,Math.min(1,(top-rect.top)/rect.height))*(block.end-block.start)),displacement:0};}
+    }return {offset:target.offset,displacement:0};
+  }}));
   useEffect(()=>{
     const version=++request.current;let cancelled=false;navigating.current=true;setLoading(true);loadingEdge.current=false;
-    void api.window(doc.id,target.offset,version).then(data=>{if(cancelled||version!==request.current)return;anchor.current=null;setWindow(data);jumpPending.current=target.offset;onWarning(data.warning);}).catch(e=>{if(!cancelled)onWarning(String(e));}).finally(()=>{if(!cancelled)setLoading(false);});
+    void api.window(doc.id,target.offset,version).then(data=>{if(cancelled||version!==request.current)return;anchor.current=null;setWindow(data);jumpPending.current=target.offset;onWarning(data.warning);}).catch(e=>{if(!cancelled){navigating.current=false;onWarning(String(e));}}).finally(()=>{if(!cancelled)setLoading(false);});
     return()=>{cancelled=true;};
   },[doc.id,target.version]);
   useLayoutEffect(()=>{
@@ -45,9 +62,9 @@ export default function MarkdownView({doc,target,fontSize,query,onProgress,onWar
     if(anchor.current){const saved=anchor.current;const row=el.querySelector<HTMLElement>(`[data-block="${saved.offset}"]`);if(row)el.scrollTop+=row.getBoundingClientRect().top-saved.top;anchor.current=null;}
     else if(jumpPending.current!==null){const offset=jumpPending.current;jumpPending.current=null;
       const block=blocks.find(b=>b.start<=offset&&b.end>offset)||blocks[0];const row=el.querySelector<HTMLElement>(`[data-block="${block.start}"]`);
-      if(offset<=doc.bom){el.scrollTop=0;}else if(offset>=doc.size-1){el.scrollTop=el.scrollHeight;}
+      if(offset<=doc.bom&&!target.displacement){el.scrollTop=0;}else if(offset>=doc.size-1){el.scrollTop=el.scrollHeight;}
       else if(row){const markers=[...row.querySelectorAll<HTMLElement>('[data-source-offset]')];const exact=markers.filter(m=>Number(m.dataset.sourceOffset)<=offset).at(-1);
-        if(exact)el.scrollTop+=exact.getBoundingClientRect().top-el.getBoundingClientRect().top-20;
+        if(exact)el.scrollTop+=exact.getBoundingClientRect().top-el.getBoundingClientRect().top-20+target.displacement;
         else {const fraction=Math.max(0,Math.min(1,(offset-block.start)/Math.max(1,block.end-block.start)));el.scrollTop+=row.getBoundingClientRect().top-el.getBoundingClientRect().top+fraction*row.getBoundingClientRect().height;}
       }
     }
@@ -79,8 +96,8 @@ export default function MarkdownView({doc,target,fontSize,query,onProgress,onWar
     {loading&&!windowData?<div className="loading-document"><LoaderCircle className="spin" size={22}/>正在读取文档</div>:null}
     {windowData&&<div className="reading-content">
       <div className="document-meta"><span>MARKDOWN</span><span>{doc.encoding}</span><span>{doc.size>=1024*1024?'按需读取':'本地文档'}</span></div>
-      {windowData.start>doc.bom&&<button className="fragment-label" onClick={()=>{const version=++request.current;void api.window(doc.id,Math.max(doc.bom,windowData.start-1),version).then(next=>{if(version!==request.current)return;jumpPending.current=next.start;setWindow(next);});}}><ArrowUp size={12}/>前一阅读区段</button>}
-      <div>{blocks.map(block=><div key={block.start} data-block={block.start} className="render-block"><Fragment block={block} documentId={doc.id} query={query}/></div>)}</div>
+      {windowData.start>doc.bom&&<button className="fragment-label" onClick={()=>onJump(Math.max(doc.bom,windowData.start-1))}><ArrowUp size={12}/>前一阅读区段</button>}
+      <div>{blocks.map(block=><div key={block.start} data-block={block.start} className="render-block"><Fragment block={block} documentId={doc.id} query={query} onLink={onLink}/></div>)}</div>
       <div className="document-end">{windowData.end>=doc.size?'文档结束':'继续滚动以读取后续内容'}</div>
     </div>}
   </div>;
