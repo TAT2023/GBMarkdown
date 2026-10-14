@@ -4,7 +4,7 @@ Windows 10/11 x64 本地只读 Markdown 阅读器。Rust Workspace + Tauri 2 + R
 
 ## 使用
 
-Windows 安装包、离线安装包和便携版可从 [GitHub Releases](https://github.com/TAT2023/GBMarkdown/releases) 下载；0.3.0 新增内部链接、阅读历史、代码与公式源码复制，并修复夜间模式标题栏；0.2.0 新增数学公式渲染，0.1.0 保留首次发布功能。
+Windows 安装包、离线安装包和便携版可从 [GitHub Releases](https://github.com/TAT2023/GBMarkdown/releases) 下载；0.4.0 新增 `\(...\)`、`\[...\]` 公式分隔符，标题栏和阅读区同步平滑切换主题；0.3.0 新增内部链接、阅读历史、代码与公式源码复制；0.2.0 新增数学公式渲染，0.1.0 保留首次发布功能。
 
 构建产物位于 `release/`：
 
@@ -17,13 +17,13 @@ Windows 安装包、离线安装包和便携版可从 [GitHub Releases](https://
 
 首次打开先显示一个有限阅读窗口，目录和结构索引随后在后台建立。底部进度条、目录和百分比输入框可跳转到全文任意位置。索引尚未覆盖的远距离位置先显示文本，完成后恢复结构渲染。
 
-数学公式支持 `$...$` 行内公式和 `$$...$$` 独立公式，包括分式、积分、矩阵和 `aligned` 多行对齐。Rust 识别公式后，前端按需加载 KaTeX；排版引擎和字体随程序本地打包，不依赖网络。代码块、行内代码和转义的美元符号保持原文。公式搜索命中会高亮整个公式，不修改其内部排版。
+数学公式支持 `$...$`、`\(...\)` 行内公式和 `$$...$$`、`\[...\]` 独立公式，包括分式、积分、矩阵和 `aligned` 多行对齐。Rust 识别公式后，前端按需加载 KaTeX；排版引擎和字体随程序本地打包，不依赖网络。代码块、行内代码和转义的分隔符保持原文。公式搜索命中会高亮整个公式，不修改其内部排版。新公式语法会使旧版磁盘索引重新构建，仍然优先显示首屏。
 
 文档内 `[链接](#标题锚点)` 可跳转到全文标题，支持中文和 URL 编码。标题文字转小写、空白替换为 `-`、去掉格式与标点；重复标题依次使用 `-1`、`-2` 后缀，编号冲突继续递增。标题锚点保存在磁盘索引中；尚未扫描到的目标会等待索引，也可取消。原始 HTML 自定义锚点和跨文件 Markdown 链接暂不支持。
 
-工具栏前进、后退按钮及 `Alt+Left/Right` 可恢复跳转前的阅读位置。内部链接、目录、搜索、百分比和文档首尾跳转共享最多 200 条文档内历史，打开或重新加载文件会清空。明暗主题同时切换 Windows 原生标题栏。
+工具栏前进、后退按钮及 `Alt+Left/Right` 可恢复跳转前的阅读位置。内部链接、目录、搜索、百分比和文档首尾跳转共享最多 200 条文档内历史，打开或重新加载文件会清空。桌面标题栏与阅读面板共享约 220 毫秒的颜色渐变，保持阅读位置，系统开启“减少动态效果”时直接切换。标题栏支持拖动、双击最大化，以及最小化、还原和关闭按钮。
 
-代码块右上角的复制按钮保留代码缩进、换行及 Unicode；行内和独立公式旁的按钮复制 LaTeX 源码，不包含 `$` 分隔符。复制不受高亮、搜索标记或公式排版影响。超大代码块按当前阅读片段复制，按钮提示为“复制当前代码片段”；无效公式仍可复制原始 LaTeX。成功显示勾号，失败可重试。
+代码块右上角的复制按钮保留代码缩进、换行及 Unicode；行内和独立公式旁的按钮复制 LaTeX 源码，不包含公式分隔符。复制不受高亮、搜索标记或公式排版影响。超大代码块按当前阅读片段复制，按钮提示为“复制当前代码片段”；无效公式仍可复制原始 LaTeX。成功显示勾号，失败可重试。
 
 公式使用 KaTeX 支持的 TeX 语法；非法或过大的公式保留原始内容。单公式输入上限 4,096 个字符，每个阅读片段最多排版 128 个公式，累计输入不超过 16,384 个字符、输出 HTML 不超过 512×1024 个字符和 12,000 个元素。宏展开次数和尺寸也有上限，不允许公式创建可信 HTML 或外部资源。跨页超大独立公式使用兼容文本模式，结束后恢复正常 Markdown。
 
@@ -46,22 +46,28 @@ cargo clippy --workspace --all-targets -- -D warnings
 npm run build
 npm run test:ui
 npm run test:math
+npm run test:latex
 npm run test:navigation
 npm run test:copy
+npm run test:theme
 npm run tauri -- build --bundles nsis
 ./scripts/package.ps1
 # 先保留普通安装包，再打包离线变体。
 npm run tauri -- bundle --bundles nsis --config src-tauri/tauri.offline.conf.json
 ./scripts/package.ps1 -Offline
 # 发布时可分别保存每个版本的产物。
-./scripts/package.ps1 -Offline -OutputDirectory release/v0.3.0
+./scripts/package.ps1 -Offline -OutputDirectory release/v0.4.0
 ```
 
 UI 测试使用本机 Edge 无头模式。`tests/desktop.mjs` 连接专用于验收的 WebView2 调试端口 9229，验证实际 Tauri IPC、1 GiB 文档、跳转、搜索高亮和主题；正常应用不启用远程调试。
 
+`tests/theme.mjs` 逐帧检查明暗颜色过渡、快速反向切换、阅读布局和减少动态效果设置；设置 `GBM_CDP_URL` 可连接已打开文档的专用原生验收窗口。
+
+设置 `GBM_CDP_URL` 与专用验收进程的 `GBM_QA_PID` 后，`node tests/window-controls.mjs` 检查桌面标题栏最大化、还原、双击、最小化与关闭；该测试会关闭验收窗口。
+
 `tests/math.mjs` 默认测试浏览器公式渲染、搜索、字体、安全策略、预算及排版后滚动锚点；设置 `GBM_CDP_URL` 后可连接已打开 `tests/fixtures/math.md` 的原生验收窗口。
 
-`node tests/navigation.mjs --fixture` 生成 `artifacts/navigation.md`；以该文件启动专用验收窗口后，设置 `GBM_CDP_URL` 可复测原生链接和历史。`tests/windows-theme.ps1 -ReaderProcessId <进程ID> -Theme dark -Screenshot artifacts/native-window-dark.png` 检查实际 Windows 标题栏暗色属性并截图，亮色用 `-Theme light`。
+`node tests/navigation.mjs --fixture` 生成 `artifacts/navigation.md`；以该文件启动专用验收窗口后，设置 `GBM_CDP_URL` 可复测原生链接和历史。`tests/windows-theme.ps1 -ReaderProcessId <进程ID> -Theme dark -Screenshot artifacts/native-window-dark.png` 检查底层 Windows 窗口的暗色属性并截图，亮色用 `-Theme light`；可见标题栏与面板的同步由 `tests/theme.mjs` 检查。
 
 发布目录的 `SHA256SUMS.txt` 提供压缩包和安装包的 SHA256 校验值。
 

@@ -1,16 +1,75 @@
 use pulldown_cmark::{html, BrokenLink, CowStr, Event, Options, Parser, Tag, TagEnd};
 use std::{borrow::Cow, ops::Range};
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct DisplayMathState {
+    bracket: Option<bool>,
+}
+impl DisplayMathState {
+    pub fn is_open(self) -> bool {
+        self.bracket.is_some()
+    }
+    pub fn update(&mut self, line: &str) -> bool {
+        let line = line.trim_end_matches(['\r', '\n', ' ', '\t']);
+        if self.bracket == Some(true) {
+            if has_bracket_close(line) {
+                self.bracket = None;
+                return true;
+            }
+            return false;
+        }
+        let trimmed = line.trim_start_matches(' ');
+        if line.len() - trimmed.len() > 3 {
+            return false;
+        }
+        if trimmed == "$$" {
+            self.bracket = if self.is_open() { None } else { Some(false) };
+            return true;
+        }
+        if !self.is_open() && trimmed.starts_with(r"\[") {
+            self.bracket = if has_bracket_close(&trimmed[2..]) {
+                None
+            } else {
+                Some(true)
+            };
+            return true;
+        }
+        false
+    }
+}
+fn has_bracket_close(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while i + 1 < bytes.len() {
+        if bytes[i] == b'\\' {
+            if bytes[i + 1] == b']' {
+                return true;
+            }
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
+    false
+}
+
+struct MathSource {
+    range: Range<usize>,
+    display: bool,
+}
 // Math must be opaque to Markdown's block pass (notably Setext headings).
 // Keep byte lengths unchanged so all source positions still refer to the file.
-fn protect_display_math(text: &str, options: Options) -> (Cow<'_, str>, Vec<Range<usize>>) {
-    if !text.contains("$$") {
+fn protect_math(text: &str, options: Options) -> (Cow<'_, str>, Vec<MathSource>) {
+    if !text.contains("$$") && !text.contains(r"\(") && !text.contains(r"\[") {
         return (Cow::Borrowed(text), Vec::new());
     }
     let excluded: Vec<_> = Parser::new_ext(text, options)
         .into_offset_iter()
         .filter_map(|(event, range)| match event {
-            Event::Start(Tag::CodeBlock(_)) | Event::Code(_) | Event::Html(_) => Some(range),
+            Event::Start(Tag::CodeBlock(_))
+            | Event::Code(_)
+            | Event::Html(_)
+            | Event::InlineHtml(_) => Some(range),
             _ => None,
         })
         .collect();
@@ -24,7 +83,10 @@ fn protect_display_math(text: &str, options: Options) -> (Cow<'_, str>, Vec<Rang
         if indent <= 3 && content[indent..].trim_end_matches([' ', '\t']) == "$$" {
             let start = offset + indent;
             if let Some(begin) = opening.take() {
-                blocks.push(begin..start + 2);
+                blocks.push(MathSource {
+                    range: begin..start + 2,
+                    display: true,
+                });
             } else {
                 while excluded_index < excluded.len() && excluded[excluded_index].end <= start {
                     excluded_index += 1;
@@ -39,13 +101,92 @@ fn protect_display_math(text: &str, options: Options) -> (Cow<'_, str>, Vec<Rang
         }
         offset += line.len();
     }
+    let mut excluded = excluded;
+    excluded.extend(
+        Parser::new_ext(text, options)
+            .into_offset_iter()
+            .filter_map(|(event, range)| match event {
+                Event::InlineMath(_)
+                | Event::DisplayMath(_)
+                | Event::Start(Tag::Link { .. } | Tag::Image { .. }) => Some(range),
+                _ => None,
+            }),
+    );
+    excluded.extend(blocks.iter().map(|block| block.range.clone()));
+    excluded.sort_by_key(|range| range.start);
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    let mut excluded_index = 0;
+    let mut opening: Option<(usize, u8)> = None;
+    while i < bytes.len() {
+        if opening.is_none() {
+            while excluded_index < excluded.len() && excluded[excluded_index].end <= i {
+                excluded_index += 1;
+            }
+            if let Some(range) = excluded
+                .get(excluded_index)
+                .filter(|range| range.contains(&i))
+            {
+                i = range.end;
+                continue;
+            }
+        }
+        if bytes[i] == b'\n'
+            && opening.is_some_and(|(_, kind)| kind == b'(')
+            && text[i + 1..]
+                .trim_start_matches([' ', '\t', '\r'])
+                .starts_with('\n')
+        {
+            opening = None;
+        }
+        if bytes[i] != b'\\' || i + 1 >= bytes.len() {
+            i += 1;
+            continue;
+        }
+        let kind = bytes[i + 1];
+        if let Some((start, delimiter)) = opening {
+            if (delimiter == b'(' && kind == b')') || (delimiter == b'[' && kind == b']') {
+                if !text[start + 2..i].trim().is_empty() {
+                    blocks.push(MathSource {
+                        range: start..i + 2,
+                        display: delimiter == b'[',
+                    });
+                }
+                opening = None;
+            } else if kind == delimiter {
+                opening = Some((i, kind));
+            }
+        } else if kind == b'(' || kind == b'[' {
+            opening = Some((i, kind));
+        }
+        i += 2;
+    }
     if blocks.is_empty() {
         return (Cow::Borrowed(text), blocks);
     }
+    blocks.sort_by_key(|block| block.range.start);
+    let mut end = 0;
+    blocks.retain(|block| {
+        if block.range.start < end {
+            return false;
+        }
+        end = block.range.end;
+        true
+    });
     let mut protected = text.as_bytes().to_vec();
-    for range in &blocks {
-        protected[range.start + 2..range.end - 2].fill(b' ');
-        protected[range.start + 2] = b'x';
+    for block in &blocks {
+        let range = &block.range;
+        protected[range.clone()].fill(b' ');
+        protected[range.start] = b'$';
+        protected[range.end - 1] = b'$';
+        if block.display {
+            protected[range.start + 1] = b'$';
+            protected[range.end - 2] = b'$';
+            protected[range.start + 2] = b'x';
+        } else {
+            protected[range.start + 1] = b'x';
+            protected[range.end - 2] = b'x';
+        }
     }
     (Cow::Owned(String::from_utf8(protected).unwrap()), blocks)
 }
@@ -163,7 +304,15 @@ pub fn markdown_with_context(
         | Options::ENABLE_STRIKETHROUGH
         | Options::ENABLE_FOOTNOTES
         | Options::ENABLE_MATH;
-    let (protected, math_blocks) = protect_display_math(text, options);
+    let (protected, math_blocks) = protect_math(text, options);
+    let math_source = |start: usize| {
+        math_blocks
+            .binary_search_by_key(&start, |block| block.range.start)
+            .ok()
+            .map(|index| {
+                &text[math_blocks[index].range.start + 2..math_blocks[index].range.end - 2]
+            })
+    };
     let callback = |link: BrokenLink| {
         resolve(&normalize_label(&link.reference))
             .map(|(url, title)| (CowStr::from(url), CowStr::from(title)))
@@ -187,7 +336,7 @@ pub fn markdown_with_context(
             format!(
                 "<span class=\"math-source\" data-math=\"inline\" data-source-offset=\"{}\">{}</span>",
                 source_offset(range.start),
-                escape(&tex)
+                escape(math_source(range.start).unwrap_or(&tex))
             )
             .into(),
         ),
@@ -196,11 +345,7 @@ pub fn markdown_with_context(
                 "<span class=\"math-source math-display\" data-math=\"display\" data-source-offset=\"{}\">{}</span>",
                 source_offset(range.start),
                 escape(
-                    math_blocks
-                        .binary_search_by_key(&range.start, |block| block.start)
-                        .ok()
-                        .map(|index| &text[math_blocks[index].start + 2..math_blocks[index].end - 2])
-                        .unwrap_or(&tex)
+                    math_source(range.start).unwrap_or(&tex)
                 )
             )
             .into(),
@@ -249,6 +394,64 @@ pub fn markdown_with_context(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn latex_delimiters_preserve_source_and_offsets() {
+        let text = "中文 \\(literal) \\(not closed\n\n";
+        assert!(!markdown(text).contains("data-math="));
+        let text = "中文 \\(x_1 + \\frac{a}{b}\\)\n\n\\[\n\\phi(t)\n=\n\\begin{aligned}\na &= b \\\\\nc &= d\n\\end{aligned}\n\\]\n\n# After\n";
+        for utf16 in [false, true] {
+            let h = markdown_with_context(text, 10, utf16, |_| None);
+            let offset = if utf16 { 16 } else { 17 };
+            assert!(
+                h.contains(&format!(
+                    "data-math=\"inline\" data-source-offset=\"{offset}\">x_1 + \\frac{{a}}{{b}}"
+                )),
+                "{h}"
+            );
+            assert!(h.contains("\\phi(t)\n=\n\\begin{aligned}"), "{h}");
+            assert_eq!(h.matches("data-math=").count(), 2, "{h}");
+            assert_eq!(h.matches("<h1").count(), 1, "{h}");
+            assert!(h.contains(">After</h1>"));
+        }
+        let h = markdown(r"Same line \[a < b\] and $c$ and \(d\).");
+        assert_eq!(h.matches("data-math=").count(), 3, "{h}");
+        assert!(h.contains(">a &lt; b</span>"), "{h}");
+        let h = markdown("Wrapped \\(a\n+ b\\).");
+        assert!(h.contains(">a\n+ b</span>"), "{h}");
+    }
+    #[test]
+    fn latex_delimiters_exclude_literals_and_recover() {
+        let text = r"`\(inline code\)`
+
+```tex
+\[fenced code\]
+```
+
+    \(indented code\)
+
+<!-- \[comment\] -->
+
+\\(escaped\\) and \\[escaped\\]
+
+[url](https://example.com/\(path\))
+
+\(unclosed
+
+# After
+
+\[also unclosed
+
+\[valid\]
+
+\(a \\) + b\) and $\text{\(literal\)}$
+";
+        let h = markdown(text);
+        assert_eq!(h.matches("data-math=").count(), 3, "{h}");
+        assert!(h.contains(">valid</span>"));
+        assert!(h.contains(r">a \\) + b</span>"));
+        assert!(h.contains(">After</h1>"));
+        assert!(!h.contains("<script>"));
+    }
     #[test]
     fn raw_html_and_dangerous_urls_are_inert() {
         let h = markdown(

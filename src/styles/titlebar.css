@@ -1,0 +1,9 @@
+.native-titlebar{height:32px;flex-shrink:0;display:flex;align-items:center;background:var(--bg);color:var(--muted);border-bottom:1px solid var(--border);user-select:none}
+.titlebar-drag{display:flex;align-items:center;gap:8px;flex:1;min-width:0;height:100%;padding:0 12px;font-size:12px}
+.titlebar-drag>*{pointer-events:none}
+.titlebar-drag svg{color:var(--accent)}
+.window-controls{height:100%;display:flex;flex-shrink:0}
+.window-controls button{display:grid;place-items:center;width:46px;height:100%;border-radius:0;cursor:default;color:var(--text)}
+.window-controls .window-close:hover:enabled{background:#c42b1c;color:#fff}
+@media(max-width:760px){.application.has-native-titlebar .search-panel{top:90px}}
+@media(max-width:520px){.application.has-native-titlebar .sidebar{top:90px}}

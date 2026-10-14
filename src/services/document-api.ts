@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import DOMPurify from 'dompurify';
 import { Lexer, Marked, Renderer, type Token } from 'marked';
 import { mathPlaceholder } from './math';
+import { latexDelimiters } from './latex-delimiters';
 
 export interface DocumentInfo { id:string; path:string; name:string; size:number; encoding:string; bom:number }
 export interface Block { start:number; end:number; html:string; mode:string; line:number }
@@ -36,7 +37,7 @@ const browserHTML=async(s:string,base:number)=>{
   previewMarkdown??=import('marked-katex-extension').then(({default:math})=>{
     const extension=math({nonStandard:true});
     for(const item of extension.extensions||[])if('renderer' in item)item.renderer=token=>mathPlaceholder(String(token.text),Boolean(token.displayMode));
-    return new Marked({renderer:previewRenderer},extension);
+    return new Marked({renderer:previewRenderer},extension,{extensions:latexDelimiters});
   });
   const parser=await previewMarkdown;
   const renderer=new Renderer();renderer.html=previewRenderer.html;let cursor=0;
@@ -50,15 +51,20 @@ async function browserOpen(file:File):Promise<DocumentInfo>{
   void (async()=>{
     let offset=0,carry='',fence='',longLine=false;const decoder=new TextDecoder();const counts=new Map<string,number>();
     const add=(position:number,level:number,title:string)=>{if(doc.headings.length>=20000)return;doc.headings.push({offset:position,level,title});const base=previewSlug(title);let slug=base,n=counts.get(base)||0;while(doc.anchors.has(slug))slug=`${base}-${++n}`;counts.set(base,n);doc.anchors.set(slug,position);};
-    let previous:{offset:number;text:string}|null=null,inMath=false;
+    let previous:{offset:number;text:string}|null=null,inMath='';
     while(offset<file.size && current===doc){
       const bytes=new Uint8Array(await file.slice(offset,offset+1024*1024).arrayBuffer());
       let lineOffset=offset-new TextEncoder().encode(carry).length;
       const text=carry+decoder.decode(bytes,{stream:offset+bytes.length<file.size});
       const parts=text.split('\n');carry=offset+bytes.length<file.size?parts.pop()||'':'';
       // Browser preview stores a capped outline; the desktop uses an uncapped disk index.
-      for(const line of parts){const f=line.match(/^ {0,3}(`{3,}|~{3,})/);if(f){if(!fence)fence=f[1][0];else if(f[1][0]===fence)fence='';}
-        const delimiter=!fence&&/^ {0,3}\$\$\s*$/.test(line);if(delimiter)inMath=!inMath;
+      for(const line of parts){const f=!inMath&&line.match(/^ {0,3}(`{3,}|~{3,})/);if(f){if(!fence)fence=f[1][0];else if(f[1][0]===fence)fence='';}
+        let delimiter=false;
+        if(!fence){
+          if(inMath==='\\['){if(/(?<!\\)(?:\\\\)*\\\]/.test(line)){inMath='';delimiter=true;}}
+          else if(/^ {0,3}\$\$\s*$/.test(line)){inMath=inMath?'':'$$';delimiter=true;}
+          else if(!inMath&&/^ {0,3}\\\[/.test(line)){inMath=/(?<!\\)(?:\\\\)*\\\]/.test(line.slice(line.indexOf('\\[')+2))?'':'\\[';delimiter=true;}
+        }
         if(!fence&&!inMath&&!delimiter&&!longLine){const h=line.match(/^ {0,3}(#{1,6})(?:\s+(.*)|$)/);if(h)add(Math.max(0,lineOffset),h[1].length,(h[2]||'').replace(/\s+#+\s*$/,''));
           else if(previous&&/^ {0,3}(?:=+|-+)\s*$/.test(line))add(previous.offset,line.trim()[0]==='='?1:2,previous.text);
         }

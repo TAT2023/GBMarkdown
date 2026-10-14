@@ -86,7 +86,7 @@ impl DiskIndex {
             .ok()
             .and_then(|b| serde_json::from_slice::<Manifest>(&b).ok())
             .filter(|m| {
-                m.version == 9
+                m.version == 10
                     && m.identity == source.identity
                     && directory
                         .join("pages.bin")
@@ -281,7 +281,8 @@ impl DiskIndex {
         let mut previous: Option<(u64, String)> = None;
         let (mut page_count, mut heading_count, mut validated) = (0, 0, 0);
         let (mut in_list, mut start_list) = (false, false);
-        let (mut in_math, mut start_math) = (false, false);
+        let mut math = gbm_parser::DisplayMathState::default();
+        let mut start_math = false;
         let mut fragment = false;
         for item in Lines::new(source, source.bom) {
             if self.cancel.load(Ordering::Relaxed) {
@@ -294,10 +295,8 @@ impl DiskIndex {
             let mut closed_fence = false;
             let blank = text.trim().is_empty();
             let math_delimiter =
-                fence.is_none() && !fragment && !chunk.continued && indent <= 3 && trimmed == "$$";
-            if math_delimiter {
-                in_math = !in_math;
-            }
+                fence.is_none() && !fragment && !chunk.continued && math.update(text);
+            let in_math = math.is_open();
             if !in_math
                 && !math_delimiter
                 && fence.is_none()
@@ -535,7 +534,7 @@ impl DiskIndex {
             s.clone()
         };
         let manifest = Manifest {
-            version: 9,
+            version: 10,
             identity: source.identity.clone(),
             status,
         };

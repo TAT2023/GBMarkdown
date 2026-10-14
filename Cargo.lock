@@ -1187,7 +1187,7 @@ dependencies = [
 
 [[package]]
 name = "gbm-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "gbm-file",
  "gbm-index",
@@ -1203,7 +1203,7 @@ dependencies = [
 
 [[package]]
 name = "gbm-file"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "blake3",
  "serde",
@@ -1213,7 +1213,7 @@ dependencies = [
 
 [[package]]
 name = "gbm-index"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "gbm-file",
  "gbm-parser",
@@ -1225,14 +1225,14 @@ dependencies = [
 
 [[package]]
 name = "gbm-parser"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "pulldown-cmark",
 ]
 
 [[package]]
 name = "gbm-render"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "gbm-parser",
  "serde",
@@ -1240,7 +1240,7 @@ dependencies = [
 
 [[package]]
 name = "gbm-search"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "gbm-file",
  "memchr",
@@ -1250,7 +1250,7 @@ dependencies = [
 
 [[package]]
 name = "gbmarkdown"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "base64 0.22.1",
  "gbm-core",

@@ -32,10 +32,14 @@ jobs:
             if($LASTEXITCODE -ne 0){throw 'UI regression failed'}
             npm run test:math
             if($LASTEXITCODE -ne 0){throw 'Math regression failed'}
+            npm run test:latex
+            if($LASTEXITCODE -ne 0){throw 'LaTeX delimiter regression failed'}
             npm run test:navigation
             if($LASTEXITCODE -ne 0){throw 'Navigation regression failed'}
             npm run test:copy
             if($LASTEXITCODE -ne 0){throw 'Clipboard regression failed'}
+            npm run test:theme
+            if($LASTEXITCODE -ne 0){throw 'Theme regression failed'}
           } finally {Stop-Process -Id $gbmServer.Id -ErrorAction SilentlyContinue}
       - run: npm run tauri -- build --bundles nsis
       - run: ./scripts/package.ps1
