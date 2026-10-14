@@ -23,6 +23,8 @@ Windows 安装包、离线安装包和便携版可从 [GitHub Releases](https://
 
 工具栏前进、后退按钮及 `Alt+Left/Right` 可恢复跳转前的阅读位置。内部链接、目录、搜索、百分比和文档首尾跳转共享最多 200 条文档内历史，打开或重新加载文件会清空。明暗主题同时切换 Windows 原生标题栏。
 
+代码块右上角的复制按钮保留代码缩进、换行及 Unicode；行内和独立公式旁的按钮复制 LaTeX 源码，不包含 `$` 分隔符。复制不受高亮、搜索标记或公式排版影响。超大代码块按当前阅读片段复制，按钮提示为“复制当前代码片段”；无效公式仍可复制原始 LaTeX。成功显示勾号，失败可重试。
+
 公式使用 KaTeX 支持的 TeX 语法；非法或过大的公式保留原始内容。单公式输入上限 4,096 个字符，每个阅读片段最多排版 128 个公式，累计输入不超过 16,384 个字符、输出 HTML 不超过 512×1024 个字符和 12,000 个元素。宏展开次数和尺寸也有上限，不允许公式创建可信 HTML 或外部资源。跨页超大独立公式使用兼容文本模式，结束后恢复正常 Markdown。
 
 快捷键：`Ctrl+O` 打开，`Ctrl+F` 搜索，`Ctrl+G` 百分比跳转，`Ctrl+Home/End` 文档首尾，搜索框 `Enter/Shift+Enter` 下一个/上一个结果。主题、字号、侧边栏、窗口尺寸、最近 20 个文件及阅读位置会自动保存。
@@ -45,6 +47,7 @@ npm run build
 npm run test:ui
 npm run test:math
 npm run test:navigation
+npm run test:copy
 npm run tauri -- build --bundles nsis
 ./scripts/package.ps1
 # 先保留普通安装包，再打包离线变体。

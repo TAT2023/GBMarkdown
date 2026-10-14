@@ -1,18 +1,23 @@
 import { useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from 'react';
 import DOMPurify from 'dompurify';
+import { createPortal } from 'react-dom';
 import { api, type Block, type DocumentInfo, type RenderWindow } from '../services/document-api';
 import { ArrowUp, LoaderCircle } from 'lucide-react';
 import { highlight } from '../services/highlight';
 import { renderMath } from '../services/math';
 import type { ReadingPosition } from '../services/navigation';
+import { prepareCopyTargets, type CopyTarget } from '../services/source-copy';
+import SourceCopyButton from './SourceCopyButton';
 export interface ReaderHandle {position:()=>ReadingPosition}
 let imageMemory=0;
 function Fragment({block,documentId,query,onLink}:{block:Block;documentId:string;query:string;onLink:(href:string)=>void}){
   const root=useRef<HTMLDivElement>(null);
+  const [copyTargets,setCopyTargets]=useState<CopyTarget[]>([]);
   const safeHTML=useMemo(()=>DOMPurify.sanitize(block.html,{ADD_ATTR:['data-local-image','data-title','data-source-offset','data-math'],FORBID_TAGS:['script','iframe','style','object'],FORBID_ATTR:['style']}),[block.html]);
-  useEffect(()=>{
+  useLayoutEffect(()=>{
     const el=root.current;if(!el)return;const controller=new AbortController();
     el.innerHTML=safeHTML;
+    setCopyTargets(prepareCopyTargets(el,block.mode==='code'));
     if(query)el.querySelectorAll<HTMLElement>('[data-math]').forEach(node=>{if(node.textContent?.toLowerCase().includes(query.toLowerCase()))node.classList.add('math-search-match');});
     const resources=new Map<HTMLElement,{visible:boolean;loading:boolean;memory:number;alt:string;image:HTMLImageElement|null}>();
     const release=(slot:HTMLElement)=>{const resource=resources.get(slot);if(!resource)return;imageMemory-=resource.memory;resource.memory=0;resource.image?.removeAttribute('src');resource.image=null;slot.textContent=resource.alt;};
@@ -25,12 +30,12 @@ function Fragment({block,documentId,query,onLink}:{block:Block;documentId:string
     el.querySelectorAll('[data-local-image]').forEach(slot=>observer.observe(slot));
     void Promise.all([highlight(el,controller.signal).catch(()=>{}),renderMath(el,controller.signal).catch(()=>{})]).then(()=>{
       if(controller.signal.aborted||!query)return;
-      const walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);const nodes:Text[]=[];let n:Node|null;while((n=walker.nextNode())){if(n.parentElement?.closest('script,style,[data-math]'))continue;nodes.push(n as Text);}
+      const walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);const nodes:Text[]=[];let n:Node|null;while((n=walker.nextNode())){if(n.parentElement?.closest('script,style,[data-math],[data-copy-controls]'))continue;nodes.push(n as Text);}
       for(const node of nodes){const text=node.data;const lower=text.toLowerCase();let start=0,pos=lower.indexOf(query.toLowerCase());if(pos<0)continue;const fragment=document.createDocumentFragment();while(pos>=0){fragment.append(text.slice(start,pos));const mark=document.createElement('mark');mark.textContent=text.slice(pos,pos+query.length);fragment.append(mark);start=pos+query.length;pos=lower.indexOf(query.toLowerCase(),start);}fragment.append(text.slice(start));node.replaceWith(fragment);}
     });
     return()=>{controller.abort();observer.disconnect();for(const slot of resources.keys())release(slot);};
-  },[block.html,documentId,query]);
-  return <div ref={root} className="markdown-body" data-source-start={block.start} dangerouslySetInnerHTML={{__html:safeHTML}} onClick={e=>{const link=(e.target as Element).closest('a');if(link){e.preventDefault();onLink(link.getAttribute('href')||'');}}}/>;
+  },[block.html,block.mode,documentId,query]);
+  return <><div ref={root} className="markdown-body" data-source-start={block.start} dangerouslySetInnerHTML={{__html:safeHTML}} onClick={e=>{const link=(e.target as Element).closest('a');if(link){e.preventDefault();onLink(link.getAttribute('href')||'');}}}/>{copyTargets.map((target,index)=>createPortal(<SourceCopyButton target={target}/>,target.container,index))}</>;
 }
 
 export default function MarkdownView({doc,target,fontSize,query,onProgress,onWarning,onLink,onJump,ref}:{doc:DocumentInfo;target:ReadingPosition&{version:number};fontSize:number;query:string;onProgress:(n:number)=>void;onWarning:(s:string|null)=>void;onLink:(href:string)=>void;onJump:(offset:number)=>void;ref:Ref<ReaderHandle>}){

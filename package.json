@@ -4,7 +4,7 @@
     "dev": "vite --host 127.0.0.1", "build": "tsc -b && vite build",
     "tauri": "tauri", "desktop": "tauri dev", "bundle": "tauri build",
     "fixture": "node scripts/generate-fixture.mjs", "test:ui": "node tests/ui.mjs",
-    "test:math": "node tests/math.mjs", "test:navigation": "node tests/navigation.mjs"
+    "test:math": "node tests/math.mjs", "test:navigation": "node tests/navigation.mjs", "test:copy": "node tests/copy.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.8.0", "@tauri-apps/plugin-dialog": "^2.4.0",
