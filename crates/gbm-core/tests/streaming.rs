@@ -24,7 +24,7 @@ fn normalize(mut html: String) -> String {
 fn pagination_matches_full_parse_for_common_blocks() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("mixed.md");
-    let chapter="# Heading 中文\n\nA **bold** paragraph and `code`, with $x^2$ math.\n\n$$\n\\frac{a}{b}\n=\na\n\n+ b\n$$\n$$\nc = d\n$$\n\n- first\n- second\n  - nested\n\n> quoted text\n\n```rust\nfn main() {}\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n";
+    let chapter="# Heading 中文\n\nA **bold** paragraph and `code`, with $x^2$ and \\(y^2\\) math.\n\n$$\n\\frac{a}{b}\n=\na\n\n+ b\n$$\n$$\nc = d\n$$\n\n\\[\nx\n=\ny\n\n+ z\n\\]\n\n- first\n- second\n  - nested\n\n> quoted text\n\n```rust\nfn main() {}\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n";
     let text = chapter.repeat(1600);
     std::fs::write(&path, &text).unwrap();
     let engine = Engine::new(dir.path().join("cache")).unwrap();
@@ -159,39 +159,44 @@ fn heading_after_a_giant_fence_is_not_rendered_as_code() {
 
 #[test]
 fn math_survives_pagination_and_giant_math_recovers_after_closing() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("math.md");
-    let text = format!(
-        "{}\n\n$$\n{}\\frac{{a}}{{b}}\n$$\n\n# After\n",
-        "paragraph\n\n".repeat(2960),
-        "x +\n".repeat(200)
-    );
-    std::fs::write(&path, &text).unwrap();
-    let engine = Engine::new(dir.path().join("cache")).unwrap();
-    let info = engine.open(&path).unwrap();
-    let doc = engine.get(&info.id).unwrap();
-    wait(&doc);
-    let formula = text.find("$$").unwrap() as u64;
-    let window = doc.render_window(formula, 65536, 1).unwrap();
-    let html: String = window.blocks.iter().map(|b| b.html.as_str()).collect();
-    assert_eq!(html.matches("data-math=\"display\"").count(), 1);
-    assert!(html.contains("\\frac{a}{b}"));
-    engine.close(&info.id);
+    for (open, close) in [("$$", "$$"), (r"\[", r"\]")] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("math.md");
+        let text = format!(
+            "{}\n\n{open}\n{}\\frac{{a}}{{b}}\n{close}\n\n# After\n",
+            "paragraph\n\n".repeat(2960),
+            "x +\n".repeat(200)
+        );
+        std::fs::write(&path, &text).unwrap();
+        let engine = Engine::new(dir.path().join("cache")).unwrap();
+        let info = engine.open(&path).unwrap();
+        let doc = engine.get(&info.id).unwrap();
+        wait(&doc);
+        let formula = text.find(open).unwrap() as u64;
+        let window = doc.render_window(formula, 65536, 1).unwrap();
+        let html: String = window.blocks.iter().map(|b| b.html.as_str()).collect();
+        assert_eq!(html.matches("data-math=\"display\"").count(), 1);
+        assert!(html.contains("\\frac{a}{b}"));
+        engine.close(&info.id);
 
-    let text = format!("$$\n{}$$\n\n# After\n", "x +\n".repeat(100000));
-    std::fs::write(&path, &text).unwrap();
-    let info = engine.open(&path).unwrap();
-    let doc = engine.get(&info.id).unwrap();
-    wait(&doc);
-    for n in 0..doc.status().pages - 1 {
-        let page = doc.index.page(n).unwrap();
-        assert_eq!(page.mode, 2);
-        assert!(page.end - page.start <= 192 * 1024);
+        let text = format!(
+            "{open}\n{}{close}\n\n# After\n",
+            "x +\n# not a heading\n$$ inside bracket math\n".repeat(10000)
+        );
+        std::fs::write(&path, &text).unwrap();
+        let info = engine.open(&path).unwrap();
+        let doc = engine.get(&info.id).unwrap();
+        wait(&doc);
+        for n in 0..doc.status().pages - 1 {
+            let page = doc.index.page(n).unwrap();
+            assert_eq!(page.mode, 2);
+            assert!(page.end - page.start <= 192 * 1024);
+        }
+        let last = doc
+            .render_window(text.find("# After").unwrap() as u64, 65536, 2)
+            .unwrap();
+        assert!(last.blocks.iter().any(|b| b.html.contains(">After</h1>")));
+        assert_eq!(doc.outline(0, 100).unwrap().len(), 1);
+        engine.close(&info.id);
     }
-    let last = doc
-        .render_window(text.find("# After").unwrap() as u64, 65536, 2)
-        .unwrap();
-    assert!(last.blocks.iter().any(|b| b.html.contains(">After</h1>")));
-    assert_eq!(doc.outline(0, 100).unwrap().len(), 1);
-    engine.close(&info.id);
 }
