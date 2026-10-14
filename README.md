@@ -19,6 +19,10 @@ Windows 安装包、离线安装包和便携版可从 [GitHub Releases](https://
 
 数学公式支持 `$...$` 行内公式和 `$$...$$` 独立公式，包括分式、积分、矩阵和 `aligned` 多行对齐。Rust 识别公式后，前端按需加载 KaTeX；排版引擎和字体随程序本地打包，不依赖网络。代码块、行内代码和转义的美元符号保持原文。公式搜索命中会高亮整个公式，不修改其内部排版。
 
+文档内 `[链接](#标题锚点)` 可跳转到全文标题，支持中文和 URL 编码。标题文字转小写、空白替换为 `-`、去掉格式与标点；重复标题依次使用 `-1`、`-2` 后缀，编号冲突继续递增。标题锚点保存在磁盘索引中；尚未扫描到的目标会等待索引，也可取消。原始 HTML 自定义锚点和跨文件 Markdown 链接暂不支持。
+
+工具栏前进、后退按钮及 `Alt+Left/Right` 可恢复跳转前的阅读位置。内部链接、目录、搜索、百分比和文档首尾跳转共享最多 200 条文档内历史，打开或重新加载文件会清空。明暗主题同时切换 Windows 原生标题栏。
+
 公式使用 KaTeX 支持的 TeX 语法；非法或过大的公式保留原始内容。单公式输入上限 4,096 个字符，每个阅读片段最多排版 128 个公式，累计输入不超过 16,384 个字符、输出 HTML 不超过 512×1024 个字符和 12,000 个元素。宏展开次数和尺寸也有上限，不允许公式创建可信 HTML 或外部资源。跨页超大独立公式使用兼容文本模式，结束后恢复正常 Markdown。
 
 快捷键：`Ctrl+O` 打开，`Ctrl+F` 搜索，`Ctrl+G` 百分比跳转，`Ctrl+Home/End` 文档首尾，搜索框 `Enter/Shift+Enter` 下一个/上一个结果。主题、字号、侧边栏、窗口尺寸、最近 20 个文件及阅读位置会自动保存。
@@ -40,6 +44,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 npm run build
 npm run test:ui
 npm run test:math
+npm run test:navigation
 npm run tauri -- build --bundles nsis
 ./scripts/package.ps1
 # 先保留普通安装包，再打包离线变体。
@@ -53,6 +58,8 @@ UI 测试使用本机 Edge 无头模式。`tests/desktop.mjs` 连接专用于验
 
 `tests/math.mjs` 默认测试浏览器公式渲染、搜索、字体、安全策略、预算及排版后滚动锚点；设置 `GBM_CDP_URL` 后可连接已打开 `tests/fixtures/math.md` 的原生验收窗口。
 
+`node tests/navigation.mjs --fixture` 生成 `artifacts/navigation.md`；以该文件启动专用验收窗口后，设置 `GBM_CDP_URL` 可复测原生链接和历史。`tests/windows-theme.ps1 -ReaderProcessId <进程ID> -Theme dark -Screenshot artifacts/native-window-dark.png` 检查实际 Windows 标题栏暗色属性并截图，亮色用 `-Theme light`。
+
 发布目录的 `SHA256SUMS.txt` 提供压缩包和安装包的 SHA256 校验值。
 
 ## 引擎设计
@@ -60,7 +67,7 @@ UI 测试使用本机 Edge 无头模式。`tests/desktop.mjs` 连接专用于验
 | 模块 | 实现 |
 | --- | --- |
 | `gbm-file` | Windows seek_read / Unix read_at；8 MiB 扫描缓冲；UTF-8 和带 BOM 的 UTF-16 LE/BE；64 KiB 行片段上限 |
-| `gbm-index` | 64 字节阅读区段记录，磁盘二分定位；16 字节标题位置记录；磁盘分页读取标题正文；redb 存储全局引用定义 |
+| `gbm-index` | 64 字节阅读区段记录，磁盘二分定位；16 字节标题位置记录；磁盘分页读取标题正文；redb 存储全局引用定义及标题锚点，重复编号也在磁盘维护 |
 | `gbm-parser` | pulldown-cmark，GFM 表格、任务列表和删除线；原始 HTML 转义；安全链接和本地图片占位；源字节位置映射 |
 | `gbm-render` | 有界 HTML 片段；普通 Markdown、围栏内代码和超大块兼容文本 |
 | `gbm-search` | UTF-8 字面量使用 memmem 流式扫描；Unicode 小写匹配及 UTF-16 保留原始字节偏移；跨缓冲匹配和取消 |

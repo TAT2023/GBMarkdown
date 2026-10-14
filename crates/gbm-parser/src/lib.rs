@@ -77,6 +77,34 @@ pub fn local_image(url: &str) -> bool {
 pub fn markdown(text: &str) -> String {
     markdown_with_references(text, 0, |_| None)
 }
+pub fn heading_slug(markdown: &str) -> String {
+    let mut text = String::new();
+    let mut heading = false;
+    for event in Parser::new_ext(
+        markdown,
+        Options::ENABLE_STRIKETHROUGH | Options::ENABLE_MATH,
+    ) {
+        match event {
+            Event::Start(Tag::Heading { .. }) => heading = true,
+            Event::End(TagEnd::Heading(_)) => break,
+            Event::Text(s) | Event::Code(s) | Event::InlineMath(s) if heading => text.push_str(&s),
+            Event::SoftBreak | Event::HardBreak if heading => text.push(' '),
+            _ => {}
+        }
+    }
+    text.to_lowercase()
+        .chars()
+        .filter_map(|c| {
+            if c.is_whitespace() {
+                Some('-')
+            } else if c.is_alphanumeric() || matches!(c, '_' | '-' | '\u{0300}'..='\u{036f}') {
+                Some(c)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
 pub fn reference_definitions(text: &str) -> Vec<(String, String, String)> {
     let parser = Parser::new(text);
     parser
@@ -187,7 +215,7 @@ pub fn markdown_with_context(
             let dest = if allowed_link(&dest_url) {
                 dest_url
             } else {
-                CowStr::Borrowed("#")
+                CowStr::Borrowed("")
             };
             Event::Start(Tag::Link {
                 link_type,
