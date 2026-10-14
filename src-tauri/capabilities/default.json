@@ -1,1 +1,1 @@
-{"identifier":"default","description":"Local reader window","windows":["main"],"permissions":["core:default","dialog:allow-open","opener:allow-open-url","opener:allow-default-urls"]}
+{"identifier":"default","description":"Local reader window","windows":["main"],"permissions":["core:default","core:window:allow-set-theme","core:window:allow-set-size","dialog:allow-open","opener:allow-open-url","opener:allow-default-urls"]}

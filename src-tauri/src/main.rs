@@ -73,6 +73,21 @@ async fn jump_to_offset(
     get_render_window(document_id, byte_offset, 128 * 1024, request_version, state).await
 }
 #[tauri::command]
+async fn resolve_anchor(
+    document_id: String,
+    fragment: String,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let doc = state.engine.get(&document_id).map_err(error)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let complete = doc.status().complete;
+        let offset = doc.resolve_anchor(&fragment).map_err(error)?;
+        Ok(serde_json::json!({"offset":offset,"complete":complete}))
+    })
+    .await
+    .map_err(error)?
+}
+#[tauri::command]
 async fn get_outline(
     document_id: String,
     start: u64,
@@ -193,6 +208,20 @@ fn main() {
         .setup(|app| {
             let root = app.path().app_local_data_dir()?;
             std::fs::create_dir_all(&root)?;
+            let theme = std::fs::read(root.join("settings.json"))
+                .ok()
+                .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+                .map(|s| {
+                    if s["theme"] == "dark" {
+                        tauri::Theme::Dark
+                    } else {
+                        tauri::Theme::Light
+                    }
+                })
+                .unwrap_or(tauri::Theme::Light);
+            if let Some(window) = app.get_webview_window("main") {
+                window.set_theme(Some(theme))?;
+            }
             app.manage(AppState {
                 engine: Arc::new(Engine::new(root.join("cache").join("index"))?),
                 settings: root.join("settings.json"),
@@ -205,6 +234,7 @@ fn main() {
             get_render_window,
             jump_to_offset,
             get_outline,
+            resolve_anchor,
             get_index_status,
             start_search,
             get_search_results,
