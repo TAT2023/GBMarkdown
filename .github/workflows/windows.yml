@@ -38,6 +38,7 @@ jobs:
             if($LASTEXITCODE -ne 0){throw 'Navigation regression failed'}
             npm run test:copy
             if($LASTEXITCODE -ne 0){throw 'Clipboard regression failed'}
+            $env:GBM_TEST_RENDER_DELAY_MS='150'
             npm run test:theme
             if($LASTEXITCODE -ne 0){throw 'Theme regression failed'}
           } finally {Stop-Process -Id $gbmServer.Id -ErrorAction SilentlyContinue}
