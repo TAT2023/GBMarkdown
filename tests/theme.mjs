@@ -11,6 +11,14 @@ try {
   const errors = [];
   page.on('pageerror', e => errors.push(String(e)));
   await page.emulateMedia({ reducedMotion: 'no-preference' });
+  if (!native && process.env.GBM_TEST_RENDER_DELAY_MS) {
+    const delay = Number(process.env.GBM_TEST_RENDER_DELAY_MS);
+    assert.ok(Number.isFinite(delay) && delay >= 0);
+    await page.route(/shiki/, async route => {
+      await new Promise(resolve => setTimeout(resolve, delay));
+      await route.continue();
+    });
+  }
   if (!native) await page.goto('http://127.0.0.1:1420');
   await page.locator('.markdown-body h1').first().waitFor();
   await page.waitForFunction(() => document.documentElement.dataset.theme);
@@ -18,6 +26,12 @@ try {
   const theme = page.getByRole('button', { name: '切换主题', exact: true });
   if (await page.locator('html').getAttribute('data-theme') === 'dark') await theme.click();
   await settled();
+  // Initial syntax highlighting and math may finish after the first heading appears.
+  await page.waitForFunction(() => {
+    const fragments = [...document.querySelectorAll('.markdown-body')];
+    return fragments.length > 0 && fragments.every(el => el.dataset.renderState === 'ready');
+  });
+  await page.evaluate(() => document.fonts.ready);
 
   const sample = async (reverse = false) => page.evaluate(async reverse => {
     const root = document.documentElement;

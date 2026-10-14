@@ -16,6 +16,7 @@ function Fragment({block,documentId,query,onLink}:{block:Block;documentId:string
   const safeHTML=useMemo(()=>DOMPurify.sanitize(block.html,{ADD_ATTR:['data-local-image','data-title','data-source-offset','data-math'],FORBID_TAGS:['script','iframe','style','object'],FORBID_ATTR:['style']}),[block.html]);
   useLayoutEffect(()=>{
     const el=root.current;if(!el)return;const controller=new AbortController();
+    el.dataset.renderState='pending';
     el.innerHTML=safeHTML;
     setCopyTargets(prepareCopyTargets(el,block.mode==='code'));
     if(query)el.querySelectorAll<HTMLElement>('[data-math]').forEach(node=>{if(node.textContent?.toLowerCase().includes(query.toLowerCase()))node.classList.add('math-search-match');});
@@ -32,7 +33,7 @@ function Fragment({block,documentId,query,onLink}:{block:Block;documentId:string
       if(controller.signal.aborted||!query)return;
       const walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);const nodes:Text[]=[];let n:Node|null;while((n=walker.nextNode())){if(n.parentElement?.closest('script,style,[data-math],[data-copy-controls]'))continue;nodes.push(n as Text);}
       for(const node of nodes){const text=node.data;const lower=text.toLowerCase();let start=0,pos=lower.indexOf(query.toLowerCase());if(pos<0)continue;const fragment=document.createDocumentFragment();while(pos>=0){fragment.append(text.slice(start,pos));const mark=document.createElement('mark');mark.textContent=text.slice(pos,pos+query.length);fragment.append(mark);start=pos+query.length;pos=lower.indexOf(query.toLowerCase(),start);}fragment.append(text.slice(start));node.replaceWith(fragment);}
-    });
+    }).finally(()=>{if(!controller.signal.aborted)el.dataset.renderState='ready';});
     return()=>{controller.abort();observer.disconnect();for(const slot of resources.keys())release(slot);};
   },[block.html,block.mode,documentId,query]);
   return <><div ref={root} className="markdown-body" data-source-start={block.start} dangerouslySetInnerHTML={{__html:safeHTML}} onClick={e=>{const link=(e.target as Element).closest('a');if(link){e.preventDefault();onLink(link.getAttribute('href')||'');}}}/>{copyTargets.map((target,index)=>createPortal(<SourceCopyButton target={target}/>,target.container,index))}</>;
