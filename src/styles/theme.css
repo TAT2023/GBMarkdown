@@ -7,23 +7,103 @@
 @property --accent { syntax: '<color>'; inherits: true; initial-value: #16806a; }
 @property --accent-bg { syntax: '<color>'; inherits: true; initial-value: #eaf5f1; }
 @property --code { syntax: '<color>'; inherits: true; initial-value: #f5f7f8; }
+@property --scroll-thumb { syntax: '<color>'; inherits: true; initial-value: #b4bdc5; }
+@property --outline-text { syntax: '<color>'; inherits: true; initial-value: #646f77; }
+@property --warning-bg { syntax: '<color>'; inherits: true; initial-value: #fcf5e5; }
+@property --warning-text { syntax: '<color>'; inherits: true; initial-value: #8b6934; }
+@property --error-bg { syntax: '<color>'; inherits: true; initial-value: #fff0ee; }
+@property --error-text { syntax: '<color>'; inherits: true; initial-value: #bc514a; }
+@property --theme-tone { syntax: '<number>'; inherits: true; initial-value: 0; }
 
 /* Animate one inherited palette so nested surfaces and text change together. */
 :root {
   color: var(--text);
   background: var(--bg);
+  scrollbar-color: var(--scroll-thumb) var(--surface);
+  --scroll-thumb: #b4bdc5;
+  --outline-text: #646f77;
+  --warning-bg: #fcf5e5;
+  --warning-text: #8b6934;
+  --error-bg: #fff0ee;
+  --error-text: #bc514a;
+  --theme-tone: 0;
+}
+:root[data-theme=dark] {
+  --scroll-thumb: #58636d;
+  --outline-text: #8e989f;
+  --warning-bg: #393023;
+  --warning-text: #d7bc86;
+  --error-bg: #3c2828;
+  --error-text: #ec9f98;
+  --theme-tone: 1;
 }
 :root[data-theme-transition] {
-  transition-property: --bg, --surface, --hover, --text, --muted, --border, --accent, --accent-bg, --code;
+  transition-property: --bg, --surface, --hover, --text, --muted, --border, --accent, --accent-bg, --code, --scroll-thumb, --outline-text, --warning-bg, --warning-text, --error-bg, --error-text, --theme-tone;
   transition-duration: 220ms;
   transition-timing-function: ease-in-out;
 }
-:root[data-theme-transition] .markdown-body code span {
-  transition: color 220ms ease-in-out;
+:root[data-theme-transition] button {
+  /* A second background transition would lag behind the inherited palette. */
+  transition: none;
+}
+:root[data-theme] .markdown-body code span[style] {
+  color: color-mix(in srgb, var(--shiki-light, var(--text)) calc((1 - var(--theme-tone)) * 100%), var(--shiki-dark, var(--text))) !important;
+}
+:root[data-theme] .outline-row { color: var(--outline-text); }
+:root[data-theme] .outline-row.active { color: var(--accent); }
+:root[data-theme] .notice.changed { background: var(--warning-bg); color: var(--warning-text); }
+:root[data-theme] .notice.error { background: var(--error-bg); color: var(--error-text); }
+.reader-scroll, .search-results { scrollbar-color: var(--scroll-thumb) var(--bg); }
+.markdown-body pre { scrollbar-color: var(--scroll-thumb) var(--code); }
+.markdown-body table { scrollbar-color: var(--scroll-thumb) var(--bg); }
+
+/* Native checkbox/range rendering switches immediately with color-scheme. */
+.document-tab>input[type=checkbox], .markdown-body input[type=checkbox] {
+  appearance: none;
+  display: inline-grid;
+  place-items: center;
+  vertical-align: middle;
+  width: 13px;
+  height: 13px;
+  padding: 0;
+  border: 1px solid var(--muted);
+  border-radius: 2px;
+  background: var(--bg);
+  color: var(--bg);
+}
+.document-tab>input[type=checkbox]:checked, .markdown-body input[type=checkbox]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.document-tab>input[type=checkbox]:checked::before, .markdown-body input[type=checkbox]:checked::before {
+  content: '';
+  width: 4px;
+  height: 7px;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  transform: translateY(-1px) rotate(45deg);
+}
+.outline-pagination input[type=range] { appearance: none; background: var(--border); cursor: pointer; }
+.outline-pagination input[type=range]::-webkit-slider-thumb { appearance: none; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+.outline-pagination input[type=range]::-moz-range-thumb { width: 9px; height: 9px; border: 0; border-radius: 50%; background: var(--accent); }
+.percent-input input[type=number] { appearance: textfield; }
+.percent-input input::-webkit-inner-spin-button, .percent-input input::-webkit-outer-spin-button { appearance: none; margin: 0; }
+.percent-stepper { display: flex; flex-direction: column; flex-shrink: 0; width: 24px; margin-right: 4px; }
+.percent-stepper button { display: grid; place-items: center; width: 24px; height: 16px; padding: 0; color: var(--muted); border-radius: 2px; }
+@supports not (scrollbar-color: red blue) {
+  ::-webkit-scrollbar { width: 12px; height: 12px; background: var(--surface); }
+  ::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border: 3px solid var(--surface); border-radius: 6px; }
+  .reader-scroll::-webkit-scrollbar { background: var(--bg); }
+  .reader-scroll::-webkit-scrollbar-thumb { border-color: var(--bg); }
+}
+@media (forced-colors: active) {
+  :root, .reader-scroll, .search-results, .markdown-body pre, .markdown-body table { scrollbar-color: auto; }
+  .document-tab>input[type=checkbox], .markdown-body input[type=checkbox], .outline-pagination input[type=range] { appearance: auto; }
+  .document-tab>input[type=checkbox]::before, .markdown-body input[type=checkbox]::before { content: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   :root[data-theme-transition],
-  :root[data-theme-transition] .markdown-body code span {
+  button {
     transition: none;
   }
 }
