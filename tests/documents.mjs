@@ -74,9 +74,9 @@ try {
     const metrics=await pane.locator(selector).first().evaluate(el=>{
       el.scrollLeft=0;const start=el.querySelector('.katex-html').getBoundingClientRect().left-el.getBoundingClientRect().left;
       el.scrollLeft=el.scrollWidth;const end=el.querySelector('.katex-html').getBoundingClientRect().right-el.getBoundingClientRect().right;
-      return {start,end,width:el.clientWidth,full:el.scrollWidth,left:el.scrollLeft,scrollbar:getComputedStyle(el).scrollbarWidth,rendered:el.classList.contains('math-rendered'),source:el.querySelector('annotation')?.textContent};
+      return {start,end,width:el.clientWidth,full:el.scrollWidth,left:el.scrollLeft,scrollbar:getComputedStyle(el).scrollbarWidth,overflow:getComputedStyle(el).overflowX,rendered:el.classList.contains('math-rendered'),source:el.querySelector('annotation')?.textContent};
     });
-    assert.equal(metrics.scrollbar,'none');assert.equal(metrics.rendered,true);assert.ok(metrics.full>metrics.width&&metrics.left>0);assert.equal(metrics.source,selector==='.math-display'?tex:inlineTex);
+    assert.equal(metrics.scrollbar,'none');assert.equal(metrics.overflow,'auto');assert.equal(metrics.rendered,true);assert.ok(metrics.full>metrics.width&&metrics.left>0);assert.equal(metrics.source.trim(),selector==='.math-display'?tex:inlineTex);
     assert.ok(metrics.start>=-1&&metrics.end<=1,'Both ends of an overflowing formula must remain reachable');
   }
   await page.getByRole('button',{name:'切换主题',exact:true}).click();
