@@ -42,10 +42,12 @@ function Fragment({block,documentId,query,onLink}:{block:Block;documentId:string
 export default function MarkdownView({doc,target,fontSize,query,onProgress,onWarning,onLink,onJump,ref}:{doc:DocumentInfo;target:ReadingPosition&{version:number};fontSize:number;query:string;onProgress:(n:number)=>void;onWarning:(s:string|null)=>void;onLink:(href:string)=>void;onJump:(offset:number)=>void;ref:Ref<ReaderHandle>}){
   const parent=useRef<HTMLDivElement>(null);const [windowData,setWindow]=useState<RenderWindow|null>(null);const [loading,setLoading]=useState(false);
   const request=useRef(0);const loadingEdge=useRef(false);const anchor=useRef<{offset:number;top:number}|null>(null);const jumpPending=useRef<number|null>(null);const navigating=useRef(false);
+  const updateViewport=useRef(()=>{});
   const blocks=windowData?.blocks||[];
   useImperativeHandle(ref,()=>({position:()=>{
     const el=parent.current;if(!el||navigating.current||loading)return {offset:target.offset,displacement:target.displacement};
     if(el.scrollTop<1&&windowData?.start===doc.bom)return {offset:doc.bom,displacement:0};
+    if(windowData?.end===doc.size&&el.scrollTop+el.clientHeight>=el.scrollHeight-1)return {offset:Math.max(doc.bom,doc.size-1),displacement:0};
     const top=el.getBoundingClientRect().top;
     const row=[...el.querySelectorAll<HTMLElement>('[data-block]')].find(r=>r.getBoundingClientRect().bottom>top+10);
     if(row){const marker=[...row.querySelectorAll<HTMLElement>('[data-source-offset]')].filter(m=>m.getBoundingClientRect().top<=top+30).at(-1)||row.querySelector<HTMLElement>('[data-source-offset]');
@@ -69,14 +71,17 @@ export default function MarkdownView({doc,target,fontSize,query,onProgress,onWar
         else {const fraction=Math.max(0,Math.min(1,(offset-block.start)/Math.max(1,block.end-block.start)));el.scrollTop+=row.getBoundingClientRect().top-el.getBoundingClientRect().top+fraction*row.getBoundingClientRect().height;}
       }
     }
-    requestAnimationFrame(()=>{navigating.current=false;});
+    const frame=requestAnimationFrame(()=>{navigating.current=false;updateViewport.current();});
+    return()=>cancelAnimationFrame(frame);
   },[windowData]);
   useEffect(()=>{
     const el=parent.current;if(!el)return;let frame=0;
     const scroll=()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{
       if(!windowData||loading||navigating.current)return;
       const top=el.getBoundingClientRect().top;const rows=[...el.querySelectorAll<HTMLElement>('[data-block]')];const row=rows.find(r=>r.getBoundingClientRect().bottom>top+10)||rows[0];const visible=blocks.findIndex(b=>b.start===Number(row?.dataset.block));const b=blocks[Math.max(0,visible)];
-      if(b&&row){const rect=row.getBoundingClientRect();const fraction=Math.min(1,Math.max(0,(top-rect.top)/Math.max(1,rect.height)));const marker=[...row.querySelectorAll<HTMLElement>('[data-source-offset]')].filter(m=>m.getBoundingClientRect().top<=top+30).at(-1);onProgress(marker?Number(marker.dataset.sourceOffset):Math.round(b.start+fraction*(b.end-b.start)));}
+      if(el.scrollTop<1&&windowData.start===doc.bom)onProgress(doc.bom);
+      else if(windowData.end>=doc.size&&el.scrollTop+el.clientHeight>=el.scrollHeight-1)onProgress(doc.size);
+      else if(b&&row){const rect=row.getBoundingClientRect();const fraction=Math.min(1,Math.max(0,(top-rect.top)/Math.max(1,rect.height)));const marker=[...row.querySelectorAll<HTMLElement>('[data-source-offset]')].filter(m=>m.getBoundingClientRect().top<=top+30).at(-1);onProgress(marker?Number(marker.dataset.sourceOffset):Math.round(b.start+fraction*(b.end-b.start)));}
       const down=el.scrollTop+el.clientHeight>el.scrollHeight-450&&windowData.end<doc.size;
       const up=el.scrollTop<200&&windowData.start>doc.bom;
       if(!down&&!up||loadingEdge.current)return;
@@ -91,7 +96,10 @@ export default function MarkdownView({doc,target,fontSize,query,onProgress,onWar
         combined=combined.slice(0,4);anchor.current=saved;setWindow({...next,blocks:combined,start:combined[0].start,end:combined.at(-1)!.end});onWarning(next.warning);
       }).catch(e=>onWarning(String(e))).finally(()=>{loadingEdge.current=false;});
     });};
-    el.addEventListener('scroll',scroll,{passive:true});return()=>{el.removeEventListener('scroll',scroll);cancelAnimationFrame(frame);};
+    updateViewport.current=scroll;
+    const observer=new ResizeObserver(scroll);observer.observe(el);if(el.firstElementChild)observer.observe(el.firstElementChild);
+    el.addEventListener('scroll',scroll,{passive:true});scroll();
+    return()=>{updateViewport.current=()=>{};observer.disconnect();el.removeEventListener('scroll',scroll);cancelAnimationFrame(frame);};
   },[windowData,doc.id,loading]);
   return <div className="reader-scroll" ref={parent} style={{'--reading-size':`${fontSize}px`} as React.CSSProperties}>
     {loading&&!windowData?<div className="loading-document"><LoaderCircle className="spin" size={22}/>正在读取文档</div>:null}
