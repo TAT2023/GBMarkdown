@@ -1,0 +1,57 @@
+.document-tabs { display:flex; flex-shrink:0; min-height:38px; overflow-x:auto; background:var(--surface); border-bottom:1px solid var(--border); scrollbar-width:thin; }
+.document-tab { display:flex; align-items:center; flex-shrink:0; min-width:130px; max-width:250px; border-right:1px solid var(--border); border-top:2px solid transparent; padding:0 6px; color:var(--muted); }
+.document-tab.selected { border-top-color:var(--accent); color:var(--text); background:var(--bg); }
+.document-tab>[role=tab] { display:flex; flex:1; align-items:center; gap:8px; min-width:0; padding:9px 7px; font-size:12px; border-radius:0; }
+.document-tab>[role=tab]>span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.document-tab svg { flex-shrink:0; }
+.document-tab>input { flex-shrink:0; margin:0 3px; accent-color:var(--accent); }
+.tab-close { display:grid; place-items:center; width:24px; height:24px; flex-shrink:0; padding:0; }
+.reading-modes { display:flex; flex-shrink:0; border:1px solid var(--border); border-radius:5px; overflow:hidden; }
+.reading-modes button { display:flex; align-items:center; justify-content:center; gap:4px; height:30px; width:32px; padding:0; border-radius:0; color:var(--muted); }
+.reading-modes button:last-child { width:52px; }
+.reading-modes button[aria-pressed=true] { color:var(--accent); background:var(--accent-bg); }
+.reading-modes span { font-size:10px; }
+.outline-host { display:flex; flex-direction:column; flex:1; min-height:0; }
+.outline-host[hidden], .document-pane[hidden] { display:none; }
+.outline-caption>span:first-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.outline-caption>span:last-child { flex-shrink:0; }
+.search-host { display:contents; }
+.workspace { position:relative; }
+.reader-grid { display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(0,1fr); min-height:0; }
+.document-pane { display:flex; flex-direction:column; min-width:0; min-height:0; overflow:hidden; container-type:inline-size; }
+.reader-grid.compare { gap:1px; background:var(--border); }
+.reader-grid.compare:not([data-pane-count="1"]) { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.reader-grid.compare[data-pane-count="3"], .reader-grid.compare[data-pane-count="4"] { grid-template-rows:repeat(2,minmax(0,1fr)); }
+.document-pane { background:var(--bg); }
+.reader-grid.compare .document-bar { border-top:2px solid transparent; padding:0 14px; height:43px; }
+.reader-grid.compare .document-pane.active .document-bar { border-top-color:var(--accent); background:var(--accent-bg); }
+.reader-grid.compare .reading-content { padding:26px 28px; }
+.reader-grid.compare .markdown-body h1 { font-size:24px; }
+.reader-grid.compare .global-navigation { margin:0 12px; }
+.document-pane .document-bar>div:last-child { flex-shrink:0; }
+.document-pane .reader-scroll { min-width:0; }
+.markdown-body .math-display, .source-copy-inline>.math-source { scrollbar-width:none; }
+.markdown-body .math-display::-webkit-scrollbar, .source-copy-inline>.math-source::-webkit-scrollbar { display:none; }
+.markdown-body .katex-display>.katex { width:max-content; min-width:100%; }
+@container (max-width:340px) {
+  .reading-content, .reader-grid.compare .reading-content { padding:20px 14px; }
+  .document-meta { gap:6px; flex-wrap:wrap; }
+  .document-meta span+span:before { margin-right:6px; }
+  .markdown-body h1, .reader-grid.compare .markdown-body h1 { font-size:22px; }
+  .markdown-body h2 { font-size:19px; }
+  .markdown-body th, .markdown-body td { min-width:70px; padding:7px 10px; }
+}
+@media(max-width:760px) {
+  .search-panel, .application.has-native-titlebar .search-panel { top:0; bottom:0; }
+  .reading-modes button { width:28px; }
+  .reading-modes button:last-child { width:45px; }
+}
+@media(max-width:700px) {
+  .reader-grid.compare:not([data-pane-count="1"]) { grid-template-columns:minmax(0,1fr); }
+  .reader-grid.compare[data-pane-count="2"] { grid-template-rows:repeat(2,minmax(0,1fr)); }
+  .reader-grid.compare[data-pane-count="3"] { grid-template-rows:repeat(3,minmax(0,1fr)); }
+  .reader-grid.compare[data-pane-count="4"] { grid-template-rows:repeat(4,minmax(0,1fr)); }
+  .reader-grid.compare .document-bar { height:32px; }
+  .reader-grid.compare .global-navigation { height:25px; }
+}
+@media(max-width:520px) { .sidebar, .application.has-native-titlebar .sidebar { top:0; bottom:0; } }
