@@ -40,20 +40,23 @@ pub struct LocalImage {
     pub height: usize,
 }
 struct RenderCache {
-    entries: VecDeque<(u64, RenderBlock)>,
+    entries: VecDeque<((String, u64), RenderBlock)>,
     bytes: usize,
 }
 impl RenderCache {
-    fn get(&mut self, key: u64) -> Option<RenderBlock> {
-        let i = self.entries.iter().position(|(k, _)| *k == key)?;
+    fn get(&mut self, document: &str, key: u64) -> Option<RenderBlock> {
+        let i = self
+            .entries
+            .iter()
+            .position(|((id, k), _)| id == document && *k == key)?;
         let pair = self.entries.remove(i)?;
         let block = pair.1.clone();
         self.entries.push_back(pair);
         Some(block)
     }
-    fn put(&mut self, key: u64, block: RenderBlock) {
+    fn put(&mut self, document: &str, key: u64, block: RenderBlock) {
         self.bytes += block.html.len();
-        self.entries.push_back((key, block));
+        self.entries.push_back(((document.to_owned(), key), block));
         while self.bytes > 16 * 1024 * 1024 || self.entries.len() > 128 {
             if let Some((_, b)) = self.entries.pop_front() {
                 self.bytes -= b.html.len();
@@ -61,6 +64,10 @@ impl RenderCache {
                 break;
             }
         }
+    }
+    fn remove_document(&mut self, document: &str) {
+        self.entries.retain(|((id, _), _)| id != document);
+        self.bytes = self.entries.iter().map(|(_, block)| block.html.len()).sum();
     }
 }
 pub struct Document {
@@ -71,11 +78,17 @@ pub struct Document {
     searches: Mutex<HashMap<String, Arc<SearchJob>>>,
     search_gate: Mutex<()>,
     closed: AtomicBool,
-    cache: Mutex<RenderCache>,
+    cache: Arc<Mutex<RenderCache>>,
     serial: AtomicU64,
 }
 impl Document {
-    pub fn open(path: &Path, root: &Path, id: String) -> io::Result<Arc<Self>> {
+    fn open(
+        path: &Path,
+        root: &Path,
+        id: String,
+        cache: Arc<Mutex<RenderCache>>,
+        index_gate: Arc<Mutex<()>>,
+    ) -> io::Result<Arc<Self>> {
         let source = Arc::new(LocalFile::open(path)?);
         let index = Arc::new(DiskIndex::new(root, &source)?);
         let info = DocumentInfo {
@@ -103,16 +116,23 @@ impl Document {
             searches: Mutex::new(HashMap::new()),
             search_gate: Mutex::new(()),
             closed: AtomicBool::new(false),
-            cache: Mutex::new(RenderCache {
-                entries: VecDeque::new(),
-                bytes: 0,
-            }),
+            cache,
             serial: AtomicU64::new(0),
         });
         if !index.status.lock().unwrap().complete {
             let worker = thread::Builder::new()
                 .name("gbm-index".into())
                 .spawn(move || {
+                    // Queue scans without making closing a queued document wait for another file.
+                    let _permit = loop {
+                        if index.cancel.load(Ordering::Relaxed) {
+                            return;
+                        }
+                        if let Ok(permit) = index_gate.try_lock() {
+                            break permit;
+                        }
+                        thread::sleep(std::time::Duration::from_millis(10));
+                    };
                     if let Err(e) = index.build(&source) {
                         let mut s = index.status.lock().unwrap();
                         s.error = Some(e.to_string());
@@ -180,7 +200,7 @@ impl Document {
                 total += page.end - page.start;
                 let complete = self.status().complete;
                 let cached = if complete {
-                    self.cache.lock().unwrap().get(page.start)
+                    self.cache.lock().unwrap().get(&self.info.id, page.start)
                 } else {
                     None
                 };
@@ -212,7 +232,10 @@ impl Document {
                         },
                     );
                     if complete {
-                        self.cache.lock().unwrap().put(page.start, b.clone());
+                        self.cache
+                            .lock()
+                            .unwrap()
+                            .put(&self.info.id, page.start, b.clone());
                     }
                     b
                 };
@@ -372,6 +395,7 @@ impl Document {
             let _ = worker.join();
         }
         self.searches.lock().unwrap().clear();
+        self.cache.lock().unwrap().remove_document(&self.info.id);
     }
     pub fn image(&self, relative: &str) -> io::Result<LocalImage> {
         if relative.contains(':') || relative.starts_with(['/', '\\']) || relative.contains('\0') {
@@ -432,6 +456,9 @@ impl Drop for Document {
 pub struct Engine {
     pub cache_root: PathBuf,
     documents: Mutex<HashMap<String, Arc<Document>>>,
+    operations: Mutex<()>,
+    cache: Arc<Mutex<RenderCache>>,
+    index_gate: Arc<Mutex<()>>,
     serial: AtomicU64,
 }
 impl Engine {
@@ -440,23 +467,35 @@ impl Engine {
         Ok(Self {
             cache_root,
             documents: Mutex::new(HashMap::new()),
+            operations: Mutex::new(()),
+            cache: Arc::new(Mutex::new(RenderCache {
+                entries: VecDeque::new(),
+                bytes: 0,
+            })),
+            index_gate: Arc::new(Mutex::new(())),
             serial: AtomicU64::new(1),
         })
     }
     pub fn open(&self, path: &Path) -> io::Result<DocumentInfo> {
-        // One active document avoids competing index writers and bounds background work.
-        let old: Vec<_> = self
+        let _operation = self.operations.lock().unwrap();
+        let path = path.canonicalize()?;
+        if let Some(doc) = self
             .documents
             .lock()
             .unwrap()
-            .drain()
-            .map(|(_, d)| d)
-            .collect();
-        for d in old {
-            d.shutdown();
+            .values()
+            .find(|d| d.source.path == path)
+        {
+            return Ok(doc.info.clone());
         }
         let id = format!("d{}", self.serial.fetch_add(1, Ordering::Relaxed));
-        let doc = Document::open(path, &self.cache_root, id.clone())?;
+        let doc = Document::open(
+            &path,
+            &self.cache_root,
+            id.clone(),
+            self.cache.clone(),
+            self.index_gate.clone(),
+        )?;
         let info = doc.info.clone();
         self.documents.lock().unwrap().insert(id, doc);
         Ok(info)
@@ -470,6 +509,7 @@ impl Engine {
             .ok_or_else(|| io::Error::other("Document closed"))
     }
     pub fn close(&self, id: &str) {
+        let _operation = self.operations.lock().unwrap();
         let doc = self.documents.lock().unwrap().remove(id);
         if let Some(d) = doc {
             d.shutdown();
@@ -480,6 +520,62 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn four_documents_do_not_share_rendered_pages_or_close_each_other() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::new(dir.path().join("cache")).unwrap();
+        let mut infos = Vec::new();
+        for n in 0..4 {
+            let path = dir.path().join(format!("doc-{n}.md"));
+            std::fs::write(&path, format!("# Document {n}\n\nUnique-{n}\n")).unwrap();
+            infos.push(engine.open(&path).unwrap());
+        }
+        for (n, info) in infos.iter().enumerate() {
+            let doc = engine.get(&info.id).unwrap();
+            let started = std::time::Instant::now();
+            while !doc.status().complete {
+                assert!(started.elapsed() < std::time::Duration::from_secs(10));
+                thread::sleep(std::time::Duration::from_millis(5));
+            }
+            for version in 0..2 {
+                let window = doc.render_window(0, 32768, version).unwrap();
+                assert!(window.blocks[0]
+                    .html
+                    .contains(&format!("Document {n}</h1>")));
+            }
+        }
+        engine.close(&infos[1].id);
+        assert!(engine.get(&infos[1].id).is_err());
+        assert!(engine
+            .get(&infos[0].id)
+            .unwrap()
+            .render_window(0, 32768, 0)
+            .is_ok());
+        assert!(engine
+            .get(&infos[3].id)
+            .unwrap()
+            .render_window(0, 32768, 0)
+            .is_ok());
+    }
+
+    #[test]
+    fn closing_a_queued_index_does_not_wait_for_the_scan_permit() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::new(dir.path().join("cache")).unwrap();
+        let path = dir.path().join("queued.md");
+        std::fs::write(&path, "paragraph\n\n".repeat(1000)).unwrap();
+        let _permit = engine.index_gate.lock().unwrap();
+        let info = engine.open(&path).unwrap();
+        assert!(engine
+            .get(&info.id)
+            .unwrap()
+            .render_window(0, 32768, 0)
+            .is_ok());
+        let started = std::time::Instant::now();
+        engine.close(&info.id);
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
+    }
+
     #[test]
     fn opening_first_screen_does_not_wait_for_index() {
         let dir = tempfile::tempdir().unwrap();

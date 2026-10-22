@@ -41,6 +41,10 @@ jobs:
             $env:GBM_TEST_RENDER_DELAY_MS='150'
             npm run test:theme
             if($LASTEXITCODE -ne 0){throw 'Theme regression failed'}
+            npm run test:documents
+            if($LASTEXITCODE -ne 0){throw 'Multiple-document regression failed'}
+            npm run test:progress
+            if($LASTEXITCODE -ne 0){throw 'Reading progress regression failed'}
           } finally {Stop-Process -Id $gbmServer.Id -ErrorAction SilentlyContinue}
       - run: npm run tauri -- build --bundles nsis
       - run: ./scripts/package.ps1
