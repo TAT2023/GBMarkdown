@@ -54,6 +54,7 @@ npm run test:latex
 npm run test:navigation
 npm run test:copy
 npm run test:theme
+npm run test:theme-components
 npm run test:documents
 npm run tauri -- build --bundles nsis
 ./scripts/package.ps1

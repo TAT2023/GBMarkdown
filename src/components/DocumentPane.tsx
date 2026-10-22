@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertCircle, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUpToLine, Check, CheckCircle2, ChevronDown, FileText, LoaderCircle, RotateCw, Search, X } from 'lucide-react';
+import { AlertCircle, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUpToLine, Check, CheckCircle2, ChevronDown, ChevronUp, FileText, LoaderCircle, RotateCw, Search, X } from 'lucide-react';
 import { api, type DocumentInfo, type IndexStatus } from '../services/document-api';
 import { ReadingHistory, type ReadingPosition } from '../services/navigation';
 import MarkdownView, { type ReaderHandle } from './MarkdownView';
@@ -96,6 +96,7 @@ export default function DocumentPane({doc,initialOffset,active,visible,comparing
     return()=>{window.removeEventListener('keydown',key);window.removeEventListener('mouseup',mouse);};
   },[active,travel,jump,doc.size,progress]);
   const closeSearch=()=>{setSearchOpen(false);setQuery('');setSearchDraft('');};
+  const stepJump=(amount:number)=>setJumpValue(value=>String(Math.max(0,Math.min(100,Math.round(((Number(value)||0)+amount)*10)/10))));
   return <>
     {active&&hosts.controls&&createPortal(<>
       <button className="icon-button" title="后退 (Alt+←)" aria-label="后退" disabled={!historyState.back} onClick={()=>travel('back')}><ArrowLeft size={18}/></button>
@@ -123,6 +124,6 @@ export default function DocumentPane({doc,initialOffset,active,visible,comparing
         if(!sliderGesture.current.saved){history.current.visit(position());refreshHistory();sliderGesture.current.saved=true;}navigate({offset:n,displacement:0});
       }} style={{'--progress':`${progress}%`} as React.CSSProperties}/><button className="icon-button small" title="跳到结尾" onClick={()=>jump(doc.size-1)}><ArrowDownToLine size={14}/></button></div>
     </section>
-    {active&&jumpOpen&&<div className="modal-backdrop" onClick={()=>setJumpOpen(false)}><form className="jump-dialog" onClick={e=>e.stopPropagation()} onSubmit={e=>{e.preventDefault();const value=Number(jumpValue);if(Number.isFinite(value)){jump(Math.min(doc.size-1,Math.max(0,value)/100*doc.size));setJumpOpen(false);}}}><div className="panel-heading"><span>跳转到文档位置</span><button type="button" className="icon-button" title="关闭" onClick={()=>setJumpOpen(false)}><X size={16}/></button></div><label>阅读百分比<div className="percent-input"><input autoFocus type="number" min="0" max="100" step="0.1" value={jumpValue} onChange={e=>setJumpValue(e.target.value)}/><span>%</span></div></label><button className="primary-button" type="submit">跳转</button></form></div>}
+    {active&&jumpOpen&&<div className="modal-backdrop" onClick={()=>setJumpOpen(false)}><form className="jump-dialog" onClick={e=>e.stopPropagation()} onSubmit={e=>{e.preventDefault();const value=Number(jumpValue);if(Number.isFinite(value)){jump(Math.min(doc.size-1,Math.max(0,value)/100*doc.size));setJumpOpen(false);}}}><div className="panel-heading"><span>跳转到文档位置</span><button type="button" className="icon-button" title="关闭" onClick={()=>setJumpOpen(false)}><X size={16}/></button></div><label>阅读百分比<div className="percent-input"><input autoFocus type="number" min="0" max="100" step="0.1" value={jumpValue} onChange={e=>setJumpValue(e.target.value)}/><span className="percent-stepper"><button type="button" title="增加跳转百分比" aria-label="增加跳转百分比" disabled={Number(jumpValue)>=100} onClick={()=>stepJump(.1)}><ChevronUp size={11}/></button><button type="button" title="减少跳转百分比" aria-label="减少跳转百分比" disabled={Number(jumpValue)<=0} onClick={()=>stepJump(-.1)}><ChevronDown size={11}/></button></span><span>%</span></div></label><button className="primary-button" type="submit">跳转</button></form></div>}
   </>;
 }
