@@ -4,7 +4,7 @@ Windows 10/11 x64 本地只读 Markdown 阅读器。Rust Workspace + Tauri 2 + R
 
 ## 使用
 
-Windows 安装包、离线安装包和便携版可从 [GitHub Releases](https://github.com/TAT2023/GBMarkdown/releases) 下载；0.4.0 新增 `\(...\)`、`\[...\]` 公式分隔符，标题栏和阅读区同步平滑切换主题；0.3.0 新增内部链接、阅读历史、代码与公式源码复制；0.2.0 新增数学公式渲染，0.1.0 保留首次发布功能。
+Windows 安装包、离线安装包和便携版可从 [GitHub Releases](https://github.com/TAT2023/GBMarkdown/releases) 下载；0.5.0 新增多文件标签和最多四文件对比阅读，修复底部阅读进度与主题过渡同步，隐藏公式滚动条并保留完整内容；0.4.0 新增 `\(...\)`、`\[...\]` 公式分隔符；0.3.0 新增内部链接、阅读历史、代码与公式源码复制；0.2.0 新增数学公式渲染，0.1.0 保留首次发布功能。
 
 构建产物位于 `release/`：
 
@@ -17,7 +17,7 @@ Windows 安装包、离线安装包和便携版可从 [GitHub Releases](https://
 
 首次打开先显示一个有限阅读窗口，目录和结构索引随后在后台建立。底部进度条、目录和百分比输入框可跳转到全文任意位置。索引尚未覆盖的远距离位置先显示文本，完成后恢复结构渲染。
 
-开发分支支持多文件标签：文件选择框可以多选，也可以一次拖入多个文件。单文档模式只显示当前标签；对比模式最多同时显示四份文档，两份左右排列，三至四份使用双列布局，窄窗口改为上下排列。标签旁的复选框选择对比文件，取消选择或移出对比不会关闭标签。点击阅读栏后，目录、搜索、状态栏和前进后退跟随该栏；各文件保留独立阅读位置、浏览历史和搜索条件。`Ctrl+Tab` / `Ctrl+Shift+Tab` 切换标签，`Ctrl+W` 关闭当前标签。桌面版重复打开同一路径会切回已有标签，打开失败不会关闭其他文件。
+支持多文件标签：文件选择框可以多选，也可以一次拖入多个文件。单文档模式只显示当前标签；对比模式最多同时显示四份文档，两份左右排列，三至四份使用双列布局，窄窗口改为上下排列。标签旁的复选框选择对比文件，取消选择或移出对比不会关闭标签。点击阅读栏后，目录、搜索、状态栏和前进后退跟随该栏；各文件保留独立阅读位置、浏览历史和搜索条件。`Ctrl+Tab` / `Ctrl+Shift+Tab` 切换标签，`Ctrl+W` 关闭当前标签。桌面版重复打开同一路径会切回已有标签，打开失败不会关闭其他文件。
 
 公式下方的水平滚动条默认隐藏，超宽公式仍可通过触控板、触屏或横向滚动访问全部内容，字号和 LaTeX 复制保持原样；长独立公式的两端都在滚动范围内。
 
@@ -56,13 +56,14 @@ npm run test:copy
 npm run test:theme
 npm run test:theme-components
 npm run test:documents
+npm run test:progress
 npm run tauri -- build --bundles nsis
 ./scripts/package.ps1
 # 先保留普通安装包，再打包离线变体。
 npm run tauri -- bundle --bundles nsis --config src-tauri/tauri.offline.conf.json
 ./scripts/package.ps1 -Offline
 # 发布时可分别保存每个版本的产物。
-./scripts/package.ps1 -Offline -OutputDirectory release/v0.4.0
+./scripts/package.ps1 -Offline -OutputDirectory release/v0.5.0
 ```
 
 UI 测试使用本机 Edge 无头模式。`tests/desktop.mjs` 连接专用于验收的 WebView2 调试端口 9229，验证实际 Tauri IPC、1 GiB 文档、跳转、搜索高亮和主题；正常应用不启用远程调试。
