@@ -99,7 +99,7 @@ fn long_lines_and_dense_headings_keep_windows_bounded() {
     engine.close(&info.id);
 }
 #[test]
-fn switching_closes_old_scans_and_old_handles() {
+fn multiple_documents_remain_independent_until_closed() {
     let dir = tempfile::tempdir().unwrap();
     let a = dir.path().join("a.md");
     let b = dir.path().join("b.md");
@@ -110,8 +110,22 @@ fn switching_closes_old_scans_and_old_handles() {
     let doc = engine.get(&old.id).unwrap();
     let sid = doc.start_search("search".into(), false).unwrap();
     let new = engine.open(&b).unwrap();
+    assert_eq!(engine.open(&a).unwrap().id, old.id);
+    assert!(doc.render_window(0, 32768, 0).is_ok());
+    assert!(doc.search_results(&sid, 0, 200).is_ok());
+    assert!(engine.open(&dir.path().join("missing.md")).is_err());
+    assert!(engine.get(&old.id).is_ok());
+    engine.close(&old.id);
     assert!(engine.get(&old.id).is_err());
     assert!(doc.search_results(&sid, 0, 200).is_err());
+    assert!(engine
+        .get(&new.id)
+        .unwrap()
+        .render_window(0, 32768, 0)
+        .unwrap()
+        .blocks[0]
+        .html
+        .contains("next</h1>"));
     engine.close(&new.id);
 }
 

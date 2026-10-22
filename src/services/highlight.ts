@@ -19,6 +19,6 @@ export async function highlight(root:HTMLElement,signal:AbortSignal){
   if(!nodes.length)return;
   const h=await getEngine();
   for(const node of nodes){if(signal.aborted)return;const alias=node.className.match(/language-([\w-]+)/)?.[1]||'';const lang=({js:'javascript',ts:'typescript',py:'python',sh:'bash',ps1:'powershell'} as Record<string,string>)[alias]||alias;const load=languages[lang];if(!load)continue;
-    try{if(!h.getLoadedLanguages().includes(lang))await h.loadLanguage((await load()).default);if(signal.aborted||!node.isConnected)return;const html=h.codeToHtml(node.textContent||'',{lang,themes:{light:'github-light',dark:'github-dark'}});const temp=document.createElement('div');temp.innerHTML=html;const code=temp.querySelector('code');if(code)node.replaceChildren(...code.childNodes);}catch{/* Keep the original code when a grammar cannot be loaded. */}
+    try{if(!h.getLoadedLanguages().includes(lang))await h.loadLanguage((await load()).default);if(signal.aborted||!node.isConnected)return;const html=h.codeToHtml(node.textContent||'',{lang,themes:{light:'github-light',dark:'github-dark'},defaultColor:false});const temp=document.createElement('div');temp.innerHTML=html;const code=temp.querySelector('code');if(code)node.replaceChildren(...code.childNodes);}catch{/* Keep the original code when a grammar cannot be loaded. */}
   }
 }
